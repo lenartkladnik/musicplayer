@@ -1,0 +1,13 @@
+yt-dlp
+requests
+bs4
+selenium
+webdriver-manager
+pillow
+scipy
+matplotlib
+scikit-learn
+windows-curses; sys_platform == 'win32'
+python-vlc
+pillow
+unidecode
