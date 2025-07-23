@@ -72,25 +72,27 @@ def main():
         playlist = Playlist(args.name, no_cover=True)
 
         resources._init_selenium_driver(instances)
-        resources._init_sp_selenium_driver()
 
         spotify = resources.Spotify()
 
         total = 0
         
-        for songs in spotify.get_songs(args.sync_playlist):
-            if songs:
-                playlist.add_batch(list(map(lambda x: x[0], songs)), list(map(lambda x: x[1], songs)), instances, not args.no_lyrics)
+        for song in spotify.get_songs(args.sync_playlist):
+            if song:
+                playlist.add(song[0], song[1], resources.drivers[0], not args.no_lyrics)
 
-            total += len(songs)
+            total += 1
 
         # Create playlist cover
         Playlist(args.name)
 
         print_('\x1b[38;5;40mDone.\x1b[0m')
-        print_(f'Got {resources.successes['audio']}/{total} ({round(resources.successes['audio'] / total, 2) * 100}%) audio files.')
-        print_(f'Got {resources.successes['lyrics']}/{total} ({round(resources.successes['lyrics'] / total, 2) * 100}%) lyrics.')
-        print_(f'Got {resources.successes['cover_art']}/{total} ({round(resources.successes['cover_art'] / total, 2) * 100}%) cover arts.')
+        try:
+            print_(f'Got {resources.successes['audio']}/{total} ({round(resources.successes['audio'] / total, 2) * 100}%) audio files.')
+            print_(f'Got {resources.successes['lyrics']}/{total} ({round(resources.successes['lyrics'] / total, 2) * 100}%) lyrics.')
+            print_(f'Got {resources.successes['cover_art']}/{total} ({round(resources.successes['cover_art'] / total, 2) * 100}%) cover arts.')
+        except:
+            pass
         print_()
 
     elif args.remove:

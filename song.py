@@ -1,3 +1,4 @@
+from selenium import webdriver
 import resources
 import yt_dlp
 import yt_dlp.downloader
@@ -28,7 +29,8 @@ class Song:
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': ext,
-            }]
+            }],
+            'noplaylist': True
         }
 
         try:

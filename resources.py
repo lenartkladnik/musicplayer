@@ -22,6 +22,7 @@ from typing import Generator
 import time
 import requests
 import sys
+import base64
 
 # Globals
 DEBUG = False
@@ -78,10 +79,56 @@ def _ensure_ublock_xpi() -> str:
 firefox_options = None
 drivers: list[webdriver.Firefox] = []
 
+def _get_driver(geckodriver_path: str, firefox_options: Options) -> webdriver.Firefox:
+    firefox_out = ""
+    snap_out = ""
+    try:
+        firefox_out = subprocess.check_output(["which", "firefox"]).decode("utf-8")
+        snap_out = subprocess.check_output(["snap", "list", "|", "grep", "firefox"]).decode("utf-8")
+    except:
+        pass
+
+    if ("not found" in firefox_out or firefox_out.strip() == ""):
+        print("No comatible browser was found on your device.")
+        print("Please install one of: Mozilla Firefox")
+        sys.exit()
+
+    elif ("firefox" in snap_out):
+        snap_firefox_bin = "/snap/firefox/current/usr/lib/firefox/firefox"
+        snap_firefoxdriver_bin = "/snap/firefox/current/usr/lib/firefox/geckodriver"
+        firefox_options.binary_location = snap_firefox_bin
+
+        service = Service(executable_path=snap_firefoxdriver_bin)
+
+        driver = webdriver.Firefox(
+            service=service,
+            options=firefox_options
+        )
+
+    else:
+        try:
+            driver = webdriver.Firefox(
+                service=Service(geckodriver_path),
+                options=firefox_options
+            )
+
+        except Exception:
+            print_(geckodriver_path)
+            os.remove(geckodriver_path)
+            geckodriver_path = GeckoDriverManager().install()
+
+            driver = webdriver.Firefox(
+                service=Service(geckodriver_path),
+                options=firefox_options
+            )
+
+    return driver
+
+
 def _init_selenium_driver(instances: int = 1):
     global firefox_options
     global drivers
-    
+
     display_info('Initializing main driver(s).')
     firefox_options = Options()
 
@@ -92,6 +139,12 @@ def _init_selenium_driver(instances: int = 1):
     firefox_options.set_preference("general.useragent.override", user_agent)
     firefox_options.set_preference("dom.webdriver.enabled", False)
     firefox_options.set_preference("useAutomationExtension", False)
+    firefox_options.set_preference("media.eme.enabled", True)
+    firefox_options.set_preference("media.gmp-widevinecdm.enabled", True)
+    firefox_options.set_preference("media.autoplay.default", 0)
+    firefox_options.set_preference("media.gmp-manager.updateEnabled", True)
+    firefox_options.set_preference("media.gmp-provider.enabled", True)
+    firefox_options.set_preference("media.gmp-widevinecdm.visible", True)
 
     display_info('Initialized main options.')
 
@@ -102,24 +155,9 @@ def _init_selenium_driver(instances: int = 1):
         geckodriver_path = geckodriver_path[0]
     else:
         geckodriver_path = GeckoDriverManager().install()
-    
+
     for _ in range(instances):
-        try:
-            driver = webdriver.Firefox(
-                service=Service(geckodriver_path),
-                options=firefox_options
-            )
-        except Exception:
-            print_(geckodriver_path)
-            os.remove(geckodriver_path)
-            geckodriver_path = GeckoDriverManager().install()
-            
-            driver = webdriver.Firefox(
-                service=Service(geckodriver_path),
-                options=firefox_options
-            )
-
-
+        driver = _get_driver(geckodriver_path, firefox_options)
         path = _ensure_ublock_xpi()
         driver.install_addon(os.path.abspath(path))
 
@@ -139,47 +177,6 @@ def _init_selenium_driver(instances: int = 1):
         display_info(f'Added driver number {len(drivers)}.')
 
     display_info('Initialized main driver(s).')
-
-sp_firefox_options = None
-sp_driver = None
-
-def _init_sp_selenium_driver():
-    global sp_firefox_options
-    global sp_driver
-    
-    display_info('Initializing sp driver.')
-    sp_firefox_options = Options()
-    
-    if DEBUG_LEVEL < 2: sp_firefox_options.add_argument("--headless")
-    sp_firefox_options.add_argument("--disable-gpu")
-    sp_firefox_options.add_argument("--no-sandbox")
-    sp_firefox_options.add_argument("--window-size=1920,1080")
-
-    display_info('Initialized sp options.')
-
-    cache_dir = os.path.expanduser("~/.wdm/drivers/geckodriver/linux64")
-    geckodriver_path = glob.glob(f"{cache_dir}/*/geckodriver")
-
-    if geckodriver_path:
-        geckodriver_path = geckodriver_path[0]
-    else:
-        geckodriver_path = GeckoDriverManager().install()
-    
-    try:
-        sp_driver = webdriver.Firefox(
-            service=Service(geckodriver_path),
-            options=sp_firefox_options
-        )
-    except Exception:
-        os.remove(geckodriver_path)
-        geckodriver_path = GeckoDriverManager().install()
-
-        sp_driver = webdriver.Firefox(
-            service=Service(geckodriver_path),
-            options=sp_firefox_options
-        )
-
-    display_info('Initialized sp driver.')
 
 class Key:
     class common:
@@ -439,8 +436,6 @@ def cleanup():
         for driver in drivers:
             driver.quit()
 
-    if sp_driver:
-        sp_driver.quit()
     # print_('\x1b[A\x1b[2K', end='')
     debug('Cleanup successful.')
 
@@ -581,106 +576,24 @@ def exit() -> None:
     sys.exit(1)
 
 class Spotify:
-    def get_songs(self, playlist_id: str) -> Generator[list]:
-        url = f'https://open.spotify.com/playlist/{playlist_id}'
-
-        try:
-            requests.get(url)
-        except requests.exceptions.ConnectionError:
-            # Invalid id or the user provide the whole url
-            url = playlist_id
-            try:
-                requests.get(url)
-            except:
-                exception('Invalid playlist ID or URL, ensure your playlist is public.')
-        
-        sp_driver.get(f'https://open.spotify.com/playlist/{playlist_id}')
-
-        debug('Wait for page to load.')
-        time.sleep(1)
-        debug('End wait.')
-
-        try:
-            close = sp_driver.find_element(By.XPATH, "//*[contains(text(), 'Close')]")
-            close.click()
-        except NoSuchElementException:
-            pass
-
-        sp_driver.find_element(By.TAG_NAME, "body").click()
-
-        songs = self._get_songs()
-        prev_n_song = None
-
-        display_info(f'New batch of {len(songs)} songs.')
-
-        while True:
-            try:
-                close = sp_driver.find_element(By.XPATH, "//*[contains(text(), 'Close')]")
-                close.click()
-            except Exception:
-                pass
-    
-            self._scroll()
-            
-            debug('Scrolled down.')
-
-            new_songs = self._get_songs()
-
-            if new_songs:
-                
-                if new_songs[-1] == prev_n_song:
-                    debug('Reached the end of the page.')
-                    display_info('Reached the end of the playlist.')
-                    break
-
-                yield list(set(new_songs) - set(songs))
-
-                songs += new_songs
-                prev_n_song = new_songs[-1]
-                songs = list(set(songs))
-
-            display_info(f'New batch of {len(new_songs)} songs.')
-
-
-        sp_driver.quit()
-
-        display_info(f'Done with {len(songs)} songs.')
-
-    def _get_songs(self) -> list[tuple[str, str]]:
-        tracks = sp_driver.find_elements(By.CSS_SELECTOR, "div[data-testid='tracklist-row']")
-
+    def get_songs(self, playlist_id: str):
         songs = []
-        if isinstance(tracks, list):
-            for track in tracks:
-                try:
-                    title = track.find_element(By.CSS_SELECTOR, "a[data-testid='internal-track-link']").text
-                    
-                    artist_elements = track.find_elements(By.CSS_SELECTOR, "a[href*='/artist/']")  
-                    artists = ", ".join([artist.text for artist in artist_elements])
-                    artists = artists.replace(' & ', ' and ')
-                    
-                    songs.append((title, artists))
-                except:
-                    continue
 
-        else:
-            track = tracks
-            try:
-                title = track.find_element(By.CSS_SELECTOR, "a[data-testid='internal-track-link']").text
-                    
-                artist_elements = track.find_elements(By.CSS_SELECTOR, "a[href*='/artist/']")  
-                artists = ", ".join([artist.text for artist in artist_elements])
-                    
-                songs.append((title, artists))
-            except:
-                pass
-        
+        if ("open.spotify.com" in playlist_id):
+            playlist_id = playlist_id.split("playlist/")[1]
+
+        playlist_url = f'https://mpbe.kladnik.cc/playlist/{playlist_id}'
+
+        response = requests.get(playlist_url)
+        playlist_data = response.json()
+
+        for item in playlist_data['items']:
+            track = item['track']
+            track_name = track['name']
+            artists = ', '.join([artist['name'] for artist in track['artists']])
+            songs.append([track_name, artists])
+
         return songs
-        
-    def _scroll(self):
-        actions = ActionChains(sp_driver)
-        actions.send_keys(Keys.PAGE_DOWN).perform()
-        time.sleep(1.2)
 
 def getSongDataPath(dir_path: str, song_b64: str, ext: str = '*') -> str | None:
     files = glob.glob(os.path.join(dir_path, f'{song_b64}.{ext}'))
