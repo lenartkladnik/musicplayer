@@ -51,7 +51,7 @@ density = {
 }
 
 cwd = os.getcwd()
-gray = "\x1b[38;5;240m"
+gray = resources.ESCAPE_CODE + "[38;5;240m"
 
 class fp:
     PLAYLISTS = os.path.join(cwd, 'playlists')
@@ -169,8 +169,8 @@ class Playlist:
                         {b64: dc}
                     )
                 except Exception as e:
-                    resources.display_info(f"Failed to load '{song[1]} by {song[2]}'.", 'warn', '\x1b[38;5;214m')
-                    resources.debug(f'({b64=})', 'warn', '\x1b[38;5;214m')
+                    resources.display_info(f"Failed to load '{song[1]} by {song[2]}'.", 'warn', resources.ESCAPE_CODE + '[38;5;214m')
+                    resources.debug(f'({b64=})', 'warn', resources.ESCAPE_CODE + '[38;5;214m')
                     self.songs.remove(song)
 
         except Exception as e:
@@ -400,13 +400,13 @@ class Playlist:
                     artists = self._truncateArtists(artists)
 
                 if tries >= 10:
-                    print_(f"\x1b[38;5;203mFailed to get audio for '{title} by {artists}'.\x1b[0m")
+                    print_(resources.ESCAPE_CODE + f"[38;5;203mFailed to get audio for '{title} by {artists}'." + resources.ESCAPE_CODE + "[0m")
                     return False
 
-                print_(f"\x1b[38;5;220mCould not get audio for '{title} by {artists}'. Trying again.\x1b[0m")
+                print_(resources.ESCAPE_CODE + f"[38;5;220mCould not get audio for '{title} by {artists}'. Trying again." + resources.ESCAPE_CODE + "[0m")
                 tries += 1
         
-        print_(f"\x1b[38;5;40mSuccessfully downloaded audio for '{title} by {artists}'.\x1b[0m")
+        print_(resources.ESCAPE_CODE + f"[38;5;40mSuccessfully downloaded audio for '{title} by {artists}'." + resources.ESCAPE_CODE + "[0m")
         resources.successes['audio'] += 1
         return True
         
@@ -419,11 +419,11 @@ class Playlist:
         except Exception as e:
             resources.debug(f'Got exception whilst getting audio:')
             resources.debug(traceback.format_exc())
-            print_(f"\x1b[38;5;203mFailed to get song data url for '{title} by {artists}'.\x1b[0m")
+            print_(resources.ESCAPE_CODE + f"[38;5;203mFailed to get song data url for '{title} by {artists}'." + resources.ESCAPE_CODE + "[0m")
             return False
         
         if not song_url:
-            print_(f"\x1b[38;5;203mFailed to download lyrics and cover art for '{title} by {artists}'.\x1b[0m")
+            print_(resources.ESCAPE_CODE + f"[38;5;203mFailed to download lyrics and cover art for '{title} by {artists}'." + resources.ESCAPE_CODE + "[0m")
             return False
         
         success = True
@@ -434,7 +434,7 @@ class Playlist:
         except Exception as e:
             resources.debug(f'Got exception whilst getting cover art:')
             resources.debug(traceback.format_exc())
-            print_(f"\x1b[38;5;203mFailed to get cover art for '{title} by {artists}'.\x1b[0m") 
+            print_(resources.ESCAPE_CODE + f"[38;5;203mFailed to get cover art for '{title} by {artists}'." + resources.ESCAPE_CODE + "[0m") 
             success = False
 
         if lyrics:
@@ -447,7 +447,7 @@ class Playlist:
             except Exception as e:
                 resources.debug(f'Got exception whilst getting lyrics:')
                 resources.debug(traceback.format_exc())
-                print_(f"\x1b[38;5;203mFailed to get lyrics for '{title} by {artists}'.\x1b[0m")
+                print_(resources.ESCAPE_CODE + f"[38;5;203mFailed to get lyrics for '{title} by {artists}'." + resources.ESCAPE_CODE + "[0m")
                 success = False
 
         with open(self.queue, 'a') as f:
@@ -468,7 +468,7 @@ class Playlist:
                 dc = SpotifyBackgroundColor(np.array(im)).best_color()
                 resources.debug(f'Got background color: {dc}.')
             except Exception:
-                resources.debug('Failed to get background color. Using white as default.', 'error', '\x1b[31m')
+                resources.debug('Failed to get background color. Using white as default.', 'error', resources.ESCAPE_CODE + '[31m')
                 dc = (255, 255, 255)
             
             with open(resources.getSongDataPath(self.cover_art_fp, b64rep, self.ascii_cover_ext), 'w+') as f:
@@ -479,7 +479,7 @@ class Playlist:
             resources.debug(traceback.format_exc())
         
         if success:
-            print_(f"\x1b[38;5;40mSuccessfully downloaded lyrics and cover art for '{title} by {artists}'.\x1b[0m")
+            print_(resources.ESCAPE_CODE + f"[38;5;40mSuccessfully downloaded lyrics and cover art for '{title} by {artists}'." + resources.ESCAPE_CODE + "[0m")
             resources.successes['cover_art'] += 1
             resources.successes['lyrics'] += 1
         
@@ -519,9 +519,9 @@ class Playlist:
 
         resources.reset_screen()
         for ln in buffer:
-            print_('\x1b[2K' + ''.join(ln).ljust(self.width))
+            print_(resources.ESCAPE_CODE + '[2K' + ''.join(ln).ljust(self.width))
 
-        print_(f'\x1b[{len(buffer) + 1}A')
+        print_(resources.ESCAPE_CODE + f'[{len(buffer) + 1}A')
 
     def list_view(self, songs: list | None = None):
         if not songs:
@@ -541,7 +541,7 @@ class Playlist:
 
             if any([x == ch for x in resources.Keybinds.control.enter]):
                 if ch == '\n':
-                    print_('\x1b[A', end='')
+                    print_(resources.ESCAPE_CODE + '[A', end='')
 
                 self.play_view(songs[self.list_sel])
                 return
@@ -668,7 +668,7 @@ class Playlist:
                 buffer.append(f'╭{"─" * (max_len + w + 4)}╮')
 
             for c, ln in enumerate(cover_art.splitlines()):
-                buffer.append(f'{"│" if ln_sel else " "}{ln}{" " * 4}{title.ljust(max_len) if c == 1 else ""}{(gray + artist.ljust(max_len) + "\x1b[0m") if c == 2 else " " * max_len if c != 1 else ""}\x1b[0m{"│" if ln_sel else " "}')
+                buffer.append(f'{"│" if ln_sel else " "}{ln}{" " * 4}{title.ljust(max_len) if c == 1 else ""}{(gray + artist.ljust(max_len) + resources.ESCAPE_CODE + "[0m") if c == 2 else " " * max_len if c != 1 else ""}' + resources.ESCAPE_CODE + f'[0m{"│" if ln_sel else " "}')
 
             if ln_sel:
                 buffer.append(f'╰{"─" * (max_len + w + 4)}╯')
@@ -676,7 +676,7 @@ class Playlist:
             else:
                 buffer.append(' ' * max_len)
 
-        self.update_display(buffer, '\x1b[A')
+        self.update_display(buffer, resources.ESCAPE_CODE + '[A')
 
     def handle_search(self, string):
         matches = []
@@ -748,8 +748,8 @@ class Playlist:
         total_time = round(player.get_length() / 1000)
 
         extra_lines = 7
-        dc_cl = f"\x1b[38;2;{dc[0]};{dc[1]};{dc[2]}m"
-        dc_bg_cl = f"\x1b[48;2;{dc[0]};{dc[1]};{dc[2]}m"
+        dc_cl = resources.ESCAPE_CODE + f"[38;2;{dc[0]};{dc[1]};{dc[2]}m"
+        dc_bg_cl = resources.ESCAPE_CODE + f"[48;2;{dc[0]};{dc[1]};{dc[2]}m"
         
         mv_back = 4
         pad = 3
@@ -779,7 +779,7 @@ class Playlist:
 
         ascii_title = self.font.get(title.replace('\n', ' '))
         
-        lyrics_color = "\x1b[38;5;255m" if sum(dc) / 3 <= 127.5 else "\x1b[38;5;0m"
+        lyrics_color = resources.ESCAPE_CODE + "[38;5;255m" if sum(dc) / 3 <= 127.5 else resources.ESCAPE_CODE + "[38;5;0m"
 
         try:
             while (player.is_playing() or not playing):
@@ -819,12 +819,12 @@ class Playlist:
                 )
 
                 column = []
-                column.append(f'{" " * pad}{dc_cl}◢{"■" * (length)}◣\x1b[0m')
+                column.append(f'{" " * pad}{dc_cl}◢{"■" * (length)}◣' + resources.ESCAPE_CODE + '[0m')
                 column += list(map(
-                        lambda x: f'{" " * pad}{dc_bg_cl}│{" " * ceil(w_p / 4)}{lyrics_color}' + x + ' ' * (mv_back * 2) + f'\x1b[0m{dc_bg_cl}{" " * ceil(w_p / 4)}│\x1b[0m',
+                        lambda x: f'{" " * pad}{dc_bg_cl}│{" " * ceil(w_p / 4)}{lyrics_color}' + x + ' ' * (mv_back * 2) + resources.ESCAPE_CODE + f'[0m{dc_bg_cl}{" " * ceil(w_p / 4)}│' + resources.ESCAPE_CODE + '[0m',
                         lyrics[lyrics_sec_start:lyrics_sec_start + lyrics_sec_height]
                 ))
-                column.append(f'{" " * pad}{dc_cl}◥{"■" * (length)}◤\x1b[0m')
+                column.append(f'{" " * pad}{dc_cl}◥{"■" * (length)}◤' + resources.ESCAPE_CODE + '[0m')
                 column.append(' ' * (pad + length + 2))
                 column.append(f'[b] ⏮  {"⏸" if playing else "▶"}  ⏭ [n]'.center(length - mv_back).ljust(pad + length + mv_back))
                 column.append(f'[space]'.center(length - mv_back) + ' ' * (mv_back * 2 + 3))
@@ -856,16 +856,16 @@ class Playlist:
                     next.append(f'╭{"─" * (max_len + n_w + 4)}╮')
 
                     for c, ln in enumerate(n_cover_art.splitlines()):
-                        next.append(f'{"│"}{ln}{" " * 4}{n_title.ljust(max_len) if c == 1 else ""}{(gray + n_artist.ljust(max_len) + "\x1b[0m") if c == 2 else " " * max_len if c != 1 else ""}\x1b[0m{"│"}')
+                        next.append(f'{"│"}{ln}{" " * 4}{n_title.ljust(max_len) if c == 1 else ""}{(gray + n_artist.ljust(max_len) + resources.ESCAPE_CODE + "[0m") if c == 2 else " " * max_len if c != 1 else ""}' + resources.ESCAPE_CODE + f'[0m{"│"}')
 
                     next.append(f'╰{"─" * (max_len + n_w + 4)}╯')
 
-                    next_pad = self.height - len(cover_art.splitlines() + ['', '', *mod_ascii_title, gray + artist + '\x1b[0m'] + next) - 5
+                    next_pad = self.height - len(cover_art.splitlines() + ['', '', *mod_ascii_title, gray + artist + resources.ESCAPE_CODE + '[0m'] + next) - 5
 
-                    column = cover_art.splitlines() + ['', '', *mod_ascii_title, gray + artist + '\x1b[0m'] + ['' for _ in range(next_pad)] + next
+                    column = cover_art.splitlines() + ['', '', *mod_ascii_title, gray + artist + resources.ESCAPE_CODE + '[0m'] + ['' for _ in range(next_pad)] + next
 
                 else:
-                    column = cover_art.splitlines() + ['', '', *mod_ascii_title, gray + artist + '\x1b[0m']
+                    column = cover_art.splitlines() + ['', '', *mod_ascii_title, gray + artist + resources.ESCAPE_CODE + '[0m']
 
                 columns.append(list(map(
                     lambda x: ' ' * (pad + 1) + x,

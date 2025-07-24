@@ -59,6 +59,8 @@ class Song:
             actions.send_keys(Keys.TAB).perform()
             time.sleep(0.2)
 
+        if resources.SEARCH_STRING_LYRICS:
+            search_string = 'lyrics ' + search_string
         for i in search_string:
             actions.send_keys(i).perform()
 

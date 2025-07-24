@@ -1,5 +1,5 @@
 import resources
-from resources import debug, print_
+from resources import ESCAPE_CODE, debug, print_
 import requests
 import bs4
 import re
@@ -186,7 +186,7 @@ class CoverArt:
                 dc = SpotifyBackgroundColor(np.array(cover)).best_color()
                 resources.debug(f'Got background color: {dc}.')
             except Exception:
-                resources.debug('Failed to get background color. Using white as default.', 'error', '\x1b[38m')
+                resources.debug('Failed to get background color. Using white as default.', 'error', ESCAPE_CODE + '[38m')
                 dc = (255, 255, 255)
 
             with open(ascii_path, 'w+') as f:

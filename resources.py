@@ -3,6 +3,7 @@ import curses
 import os
 import glob
 import inspect
+from types import resolve_bases
 from PIL import Image
 from unidecode import unidecode
 from typing import Tuple
@@ -34,12 +35,14 @@ MINIMALIST_LEVEL = -1
 MAX_PROC = 4
 DISABLE_CLEAR = False
 DISABLE_ASCII = False
+ESCAPE_CODE = "\033"
+SEARCH_STRING_LYRICS = True
 
 successes = {'audio': 0, 'lyrics': 0, 'cover_art': 0}
 
 display_info_mode = False
 
-ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
+ansi_escape = re.compile(ESCAPE_CODE + r'\[[0-?]*[ -/]*[@-~]')
 
 def print_(*values: object, sep: str | None = " ", end: str | None = "\n", file = None, flush = False) -> None:
     new_values = list(values)
@@ -58,12 +61,12 @@ def debug(value: object, status: str = 'info', color: str = '', level: int = 0) 
         stack = inspect.stack() # Inspect the stack to later find the function who called debug
         
         debug_msg = f'[{dt.now().strftime("%H:%M:%S")}] [{status.upper()}] [{stack[1].filename.split('/')[-1].split('\\')[-1]} -> {stack[1].function}] {value}'
-        print_(color + debug_msg + '\x1b[0m')
+        print_(color + debug_msg + ESCAPE_CODE + '[0m')
         LOG.append(debug_msg)
 
 def display_info(value: object, status: str = 'info', color: str = '') -> None:
     if display_info_mode:
-        print_(f'\x1b[99999999D{color}[{status.upper()}] {value}\x1b[0m')
+        print_(ESCAPE_CODE + f'[99999999D{color}[{status.upper()}] {value}' + ESCAPE_CODE + '[0m')
 
 def _ensure_ublock_xpi() -> str:
     path = './ublock_origin.xpi'
@@ -262,7 +265,7 @@ def getch(blocking: bool = False) -> str | None:
         curses.echo()
         curses.endwin()
 
-ansi_escape = re.compile(r'\x1b\[[0-9;]*[a-zA-Z]')
+ansi_escape = re.compile(ESCAPE_CODE + r'\[[0-9;]*[a-zA-Z]')
 
 def db_print_(*values: str, sep: str = " ", end: str | None = "\n", file: str | None = None, flush: bool = False, no_clear: bool = False):
     """
@@ -271,7 +274,7 @@ def db_print_(*values: str, sep: str = " ", end: str | None = "\n", file: str | 
 
     if not DISABLE_STDOUT:
         if not no_clear:
-            print_("\r\x1b[0K", end="", flush=flush) # Add \x1b[0K to start of values to clear any weird artifacts in front of the string
+            print_("\r" + ESCAPE_CODE + "[0K", end="", flush=flush) # Add \ESC[0K to start of values to clear any weird artifacts in front of the string
         
         if MINIMALIST_LEVEL == 2:
             # Remove all ansi escape codes
@@ -342,7 +345,7 @@ def replaceNonAlphaNum(s: str, n: str) -> str:
 
 def reset_screen():
     if not DISABLE_CLEAR:
-        print_('\x1b[2J\x1b[H', end='')
+        print_(ESCAPE_CODE + '[2J' + ESCAPE_CODE + '[H', end='')
 
 def matching(s1: str, s2: str, split: str = ' ', diff: int = 2, instant_match: bool = False, ln_match: bool = False) -> bool:
     """
@@ -411,7 +414,7 @@ def coverImgToText(image: Image, density: dict, w: int, h: int) -> str:
             r, g, b = im.getpixel((x, y))
             
             density_char, _ = min(density.items(), key=lambda i: abs(mono_pixel - i[1])) # The character from the density map
-            tmp += f"\x1b[1m\x1b[38;2;{r};{g};{b}m{density_char}\x1b[0m" # Combine the RGB and density character (this is one character)
+            tmp += ESCAPE_CODE + f"[1m" + ESCAPE_CODE + f"[38;2;{r};{g};{b}m{density_char}" + ESCAPE_CODE + "[0m" # Combine the RGB and density character (this is one character)
         
         img.append(tmp)
         debug(f'Converted row {y + 1} to ascii.', level=1)
@@ -436,7 +439,6 @@ def cleanup():
         for driver in drivers:
             driver.quit()
 
-    # print_('\x1b[A\x1b[2K', end='')
     debug('Cleanup successful.')
 
 class progressBar:
@@ -460,7 +462,7 @@ class progressBar:
         print_(f'{self.text} {self.fill * self.full}{self.blank * (self.total - self.full)} [{self.full}/{self.total}]')
 
     def discard(self):
-        print_('\x1b[2K', end='')
+        print_(ESCAPE_CODE + '[2K', end='')
 
 class FontError(Exception):...
 
@@ -477,7 +479,8 @@ class Figlet: # Old bad code don't bother
         if download:
             if not os.path.exists(font_name):
                 with open(font_name, "w+") as f:
-                    f.write(subprocess.Popen(f'curl "http://www.figlet.org/fonts/{font_name}"', shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL).stdout.read().decode())
+                    font_contents = subprocess.check_output(f'curl "http://www.figlet.org/fonts/{font_name}"', shell=True).decode()
+                    f.write(font_contents)
 
         with open(font_name, encoding="utf-8") as f:
             self.font = f.read()
@@ -567,7 +570,7 @@ class Figlet: # Old bad code don't bother
         return display
     
 def exception(message: str):
-    print_(f'\x1b[38;5;203m{message}\x1b[0m')
+    print_(ESCAPE_CODE + f'[38;5;203m{message}' + ESCAPE_CODE + '[0m')
     cleanup()
     sys.exit(1)
 

@@ -12,7 +12,7 @@ parser.add_argument('-s', '--shuffle', action='store_true', help='Automatically 
 parser.add_argument('-Sp', '--sync-playlist', dest='sync_playlist', help="Sync playlist, provide the spotify playlist ID or URL.")
 parser.add_argument('-A', '--add', help='Add song by title and artist(s), provide "title by (comma sep.) artist(s)".')
 parser.add_argument('-nl', '--no-lyrics', dest='no_lyrics', action='store_true', help="Don't add lyrics.")
-parser.add_argument('--no-clear', dest='no_clear', action='store_true', help="Don't ever print \\x1b[2J (for debuging).")
+parser.add_argument('--no-clear', dest='no_clear', action='store_true', help="Don't ever print \\ESC[2J (for debuging).")
 parser.add_argument('--no-ascii', dest='no_ascii', action='store_true', help="Don't display ascii codes (for debuging).")
 # parser.add_argument('-i', '--instances', dest='instances', type=int, default=1, help="Set the number of selenium instances used for the downloader.")
 parser.add_argument('--debug', default=0, type=int, help="Turn on debug mode with the level provided.")
@@ -86,7 +86,7 @@ def main():
         # Create playlist cover
         Playlist(args.name)
 
-        print_('\x1b[38;5;40mDone.\x1b[0m')
+        print_(resources.ESCAPE_CODE + '[38;5;40mDone.' + resources.ESCAPE_CODE + '[0m')
         try:
             print_(f'Got {resources.successes['audio']}/{total} ({round(resources.successes['audio'] / total, 2) * 100}%) audio files.')
             print_(f'Got {resources.successes['lyrics']}/{total} ({round(resources.successes['lyrics'] / total, 2) * 100}%) lyrics.')
