@@ -1,5 +1,4 @@
 import os
-from numpy._typing import _128Bit
 from song import Song
 from math import floor, ceil
 from data import GeniusURL, Lyrics, CoverArt
@@ -98,7 +97,7 @@ class Playlist:
         self.end_area = self.initial_end
 
         self.fwd_amount = 500
-        self.interval = 0.05
+        self.interval = resources.REDRAW_INTERVAL
 
         self.leftover_scroll = self.height // 4
 
@@ -189,6 +188,9 @@ class Playlist:
                 self.exit()
 
     def ensureResize(self):
+        if resources.NO_AUTO_RESIZE:
+            return False
+
         prev_size = (self.width, self.height)
         size = shutil.get_terminal_size((80, 20))
 
@@ -515,13 +517,13 @@ class Playlist:
     def update_display(self, buffer: list, instructions: str | None = ''):
         buffer = [';'] + buffer
         if instructions:
-            buffer = [instructions] + buffer 
+            buffer = [instructions] + buffer
 
         resources.reset_screen()
         for ln in buffer:
             print_(resources.ESCAPE_CODE + '[2K' + ''.join(ln).ljust(self.width))
 
-        print_(resources.ESCAPE_CODE + f'[{len(buffer) + 1}A')
+        print_(resources.ESCAPE_CODE + '[H')
 
     def list_view(self, songs: list | None = None):
         if not songs:
@@ -643,8 +645,6 @@ class Playlist:
                     # Create playlist cover
                     self.createCover()
                     resources.display_info_mode = False
-
-                self._update_list_view(songs)
 
             time.sleep(self.interval)
     
@@ -769,7 +769,7 @@ class Playlist:
         lyrics = wrapped_lyrics
 
         lyrics_sec_start = 0
-        lyrics_sec_height = self.height - extra_lines
+        lyrics_sec_height = self.height - extra_lines - 2
         length = self.lyrics_width + mv_back * 2 + ceil(w_p / 4) * 2
 
         title_sec_start = 0
@@ -874,7 +874,6 @@ class Playlist:
 
                 buffer = [''] + [list(group) for group in zip(*columns)]
 
-                os.system('clear')
                 self.update_display(buffer)
 
                 # Controls

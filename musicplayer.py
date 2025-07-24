@@ -12,6 +12,8 @@ parser.add_argument('-s', '--shuffle', action='store_true', help='Automatically 
 parser.add_argument('-Sp', '--sync-playlist', dest='sync_playlist', help="Sync playlist, provide the spotify playlist ID or URL.")
 parser.add_argument('-A', '--add', help='Add song by title and artist(s), provide "title by (comma sep.) artist(s)".')
 parser.add_argument('-nl', '--no-lyrics', dest='no_lyrics', action='store_true', help="Don't add lyrics.")
+parser.add_argument('--slow', action='store_true', help="Slow down the refresh rate to help get rid of flickering.")
+parser.add_argument('--no-auto-resize', dest='no_auto_resize', action='store_true', help="Disable automatic ajustment to resizing of the terminal.")
 parser.add_argument('--no-clear', dest='no_clear', action='store_true', help="Don't ever print \\ESC[2J (for debuging).")
 parser.add_argument('--no-ascii', dest='no_ascii', action='store_true', help="Don't display ascii codes (for debuging).")
 # parser.add_argument('-i', '--instances', dest='instances', type=int, default=1, help="Set the number of selenium instances used for the downloader.")
@@ -34,12 +36,18 @@ def main():
     if args.no_ascii:
         resources.DISABLE_ASCII = True
 
+    if args.slow:
+        resources.REDRAW_INTERVAL = 0.25
+
+    if args.no_auto_resize:
+        resources.NO_AUTO_RESIZE = True
+
     if args.shuffle:
         # Shuffle mode
         playlist = Playlist(args.name)
         playlist.shuffle = True
         playlist.songs = playlist.shuffleSongs(playlist.songs)
-        playlist.handle_next(playlist.songs)
+        playlist.handle_next()
 
     if args.no_clear:
         resources.DISABLE_CLEAR = True

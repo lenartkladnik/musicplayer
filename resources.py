@@ -3,27 +3,20 @@ import curses
 import os
 import glob
 import inspect
-from types import resolve_bases
 from PIL import Image
 from unidecode import unidecode
-from typing import Tuple
 from datetime import datetime as dt
 import re
 from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.firefox.options import Options
 from webdriver_manager.firefox import GeckoDriverManager
-from selenium.common.exceptions import NoSuchElementException
-from selenium.webdriver.common.by import By
 from selenium import webdriver
 import subprocess
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.by import By
-from typing import Generator
 import time
 import requests
 import sys
-import base64
 
 # Globals
 DEBUG = False
@@ -37,6 +30,8 @@ DISABLE_CLEAR = False
 DISABLE_ASCII = False
 ESCAPE_CODE = "\033"
 SEARCH_STRING_LYRICS = True
+REDRAW_INTERVAL = 0.05
+NO_AUTO_RESIZE = False
 
 successes = {'audio': 0, 'lyrics': 0, 'cover_art': 0}
 
@@ -345,7 +340,7 @@ def replaceNonAlphaNum(s: str, n: str) -> str:
 
 def reset_screen():
     if not DISABLE_CLEAR:
-        print_(ESCAPE_CODE + '[2J' + ESCAPE_CODE + '[H', end='')
+        print_(ESCAPE_CODE + '[H', end='')
 
 def matching(s1: str, s2: str, split: str = ' ', diff: int = 2, instant_match: bool = False, ln_match: bool = False) -> bool:
     """
@@ -438,6 +433,9 @@ def cleanup():
     if drivers:
         for driver in drivers:
             driver.quit()
+
+    if DISABLE_CLEAR:
+        os.system('clear')
 
     debug('Cleanup successful.')
 
@@ -598,13 +596,13 @@ class Spotify:
 
         return songs
 
-def getSongDataPath(dir_path: str, song_b64: str, ext: str = '*') -> str | None:
+def getSongDataPath(dir_path: str, song_b64: str, ext: str = '*') -> str:
     files = glob.glob(os.path.join(dir_path, f'{song_b64}.{ext}'))
 
     if files:
         return files[0]
     
-    return None
+    return ""
 
 def existsSongData(dir_path: str, song_b64: str, ext: str = '*') -> bool:
     data = getSongDataPath(dir_path=dir_path, song_b64=song_b64, ext=ext)

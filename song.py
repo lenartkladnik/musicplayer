@@ -1,7 +1,5 @@
-from selenium import webdriver
 import resources
 import yt_dlp
-import yt_dlp.downloader
 from base64 import b64encode
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
