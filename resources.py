@@ -249,7 +249,7 @@ def getch(blocking: bool = False) -> str | None:
                         next_key = stdscr.getch()
                         if next_key == 126:
                             return Key.common.delete
-            
+
             else:
                 return chr(key)
         return None

@@ -29,6 +29,7 @@ class Lyrics:
         r = requests.get("https://lyrics.kladnik.cc/?q=" + urllib.parse.quote(search_string)).text
 
         lyrics = "[" + r.split("[", 1)[1]
+        lyrics = lyrics.replace("Ä", "č").replace("Å¡", "š").replace("Ðµ", "e")
 
         return self.truncate(lyrics.split('\n'))
 

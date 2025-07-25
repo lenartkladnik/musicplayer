@@ -218,8 +218,8 @@ class Playlist:
         self.songs = self.loadSongs()
         b64s = []
         for f in os.listdir(self.songs_fp):
-            if f.endswith(".m4a"):
-                b64 = f.split(".m4a")[0]
+            if f.endswith(self.song_ext):
+                b64 = f.split(self.song_ext)[0]
                 bad = False
                 for song in self.songs:
                     if song[3] == b64:
@@ -240,6 +240,32 @@ class Playlist:
                 f.write(f'{song[0]},{song[1]}\n')
 
         self.songs = self.loadSongs()
+
+    def cleanupSongData(self):
+        to_cleanup = []
+        for f in os.listdir(self.lyrics_fp):
+            b64 = f.split("." + self.lyrics_ext)[0]
+
+            resources.debug(f"Checking: {os.path.join(self.songs_fp, b64 + "." + self.song_ext)}", level=2)
+
+            if not os.path.exists(os.path.join(self.songs_fp, b64 + "." + self.song_ext)):
+                to_cleanup.append(b64)
+
+        resources.debug(f"Removing: {to_cleanup}");
+
+        for b64 in to_cleanup:
+            try:
+                os.remove(self.lyrics_fp + "/" + b64 + "." + self.lyrics_ext)
+            except OSError as e: resources.debug(f"Error whilst removing '{self.lyrics_fp + b64 + self.lyrics_ext}': {e}", level=2)
+            try:
+                os.remove(self.cover_art_fp + "/" + b64 + "." + self.cover_ext)
+            except OSError as e: resources.debug(f"Error whilst removing '{self.cover_art_fp + b64 + self.cover_ext}': {e}", level=2)
+            try:
+                os.remove(self.cover_art_fp + "/" + b64 + "." + self.ascii_cover_ext)
+            except OSError as e: resources.debug(f"Error whilst removing '{self.cover_art_fp + b64 + self.ascii_cover_ext}': {e}", level=2)
+            try:
+                os.remove(self.songs_fp + "/" + b64 + "." + self.song_ext)
+            except OSError as e: resources.debug(f"Error whilst removing '{self.songs_fp + b64 + self.song_ext}': {e}", level=2)
 
     def fix_integrity(self):
         self.findSongs()
@@ -280,6 +306,7 @@ class Playlist:
 
             filtered.append(song)
 
+        self.cleanupSongData()
         self.songs = filtered
 
         with open(self.queue, 'w') as f:
@@ -569,7 +596,7 @@ class Playlist:
 
         print_(resources.ESCAPE_CODE + f'[{len(buffer) + 1}A', end='')
 
-    def list_view(self, songs: list | None = None):
+    def list_view(self, songs: list[list[str]] | None = None):
         if not songs:
             songs = self.songs
 
@@ -597,19 +624,10 @@ class Playlist:
                 return
 
             elif any([x == ch for x in resources.Keybinds.navigation.up]):
-                self.list_sel = self.list_sel - 1 if self.list_sel > 0 else self.list_sel
+                self.list_sel = self.list_sel - 1 if self.list_sel > 0 else 0
                 if self.list_sel <= self.start_area and self.list_sel > 0:
                     self.start_area -= 1
                     self.end_area -= 1
-
-                else:
-                    self.list_sel = 0
-                    self.start_area = 0
-                    self.end_area = self.initial_end
-                    self.current_song = self.list_sel = 0
-                    self.start_area = 0
-                    self.end_area = self.initial_end
-                    self.current_song = 0
 
                 self._update_list_view(songs)
 
@@ -674,15 +692,19 @@ class Playlist:
                     b64 = songs[self.list_sel][3]
 
                     songs.pop(self.list_sel)
-                    self.songs.pop(self.list_sel)
+                    self.songs = songs
 
                     try:
                         os.remove(str(resources.getSongDataPath(self.songs_fp, b64, self.song_ext)))
                     except:
                         pass
 
+                    count -= 1
+                    self.list_sel -= 1
+
+                    self.songs = self.sortSongs(self.loadSongs())
                     self.fix_integrity()
-                    self.songs = self.loadSongs()
+                    songs = self.songs
 
                     self._update_list_view(self.songs)
 
@@ -698,7 +720,10 @@ class Playlist:
                     self.createCover()
                     resources.display_info_mode = False
 
+                    count += 1
+
                     self.songs = self.sortSongs(self.loadSongs())
+                    songs = self.songs
                     self.fix_integrity()
 
                     self._update_list_view(self.songs)
