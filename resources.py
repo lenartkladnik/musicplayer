@@ -340,7 +340,7 @@ def replaceNonAlphaNum(s: str, n: str) -> str:
 
 def reset_screen():
     if not DISABLE_CLEAR:
-        print_(ESCAPE_CODE + '[H', end='')
+        print_(ESCAPE_CODE + '[2J' + ESCAPE_CODE + '[H', end='')
 
 def matching(s1: str, s2: str, split: str = ' ', diff: int = 2, instant_match: bool = False, ln_match: bool = False) -> bool:
     """
@@ -434,7 +434,7 @@ def cleanup():
         for driver in drivers:
             driver.quit()
 
-    if DISABLE_CLEAR:
+    if not DISABLE_CLEAR:
         os.system('clear')
 
     debug('Cleanup successful.')

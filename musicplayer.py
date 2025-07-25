@@ -55,22 +55,9 @@ def main():
     elif args.add:
         resources.display_info_mode = True
         playlist = Playlist(args.name, no_cover=True)
-        
         resources._init_selenium_driver()
 
-        if ' by ' in args.add:
-            title, artists = args.add.split(' by ', 1)
-
-        elif ' , ' in args.add:
-            title, artists = args.add.split(' , ', 1)
-
-        elif ',' in args.add:
-            title, artists = args.add.split(',', 1)
-
-        else:
-            title, artists = args.add.split(' ', 1)
-
-        playlist.add(title, artists, resources.drivers[0], not args.no_lyrics)
+        playlist.add(args.add, resources.drivers[0], not args.no_lyrics)
 
         # Create playlist cover
         Playlist(args.name)
@@ -87,7 +74,7 @@ def main():
         
         for song in spotify.get_songs(args.sync_playlist):
             if song:
-                playlist.add(song[0], song[1], resources.drivers[0], not args.no_lyrics)
+                playlist.add(' '.join(song), resources.drivers[0], not args.no_lyrics)
 
             total += 1
 

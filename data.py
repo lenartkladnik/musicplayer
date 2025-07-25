@@ -1,8 +1,8 @@
+from os import truncate
 import resources
 from resources import ESCAPE_CODE, debug, print_
 import requests
-import bs4
-import re
+import urllib.parse
 from spotify_background_color import SpotifyBackgroundColor
 import numpy as np
 from selenium.webdriver.common.by import By
@@ -14,165 +14,30 @@ from PIL import Image
 class Lyrics:
     def __init__(self):
         pass
-    
-    def truncate(self, lst):
+
+    def truncate(self, lst) -> str:
         result = []
-        
+
         for i, item in enumerate(lst):
             if item != '\n' or (i > 0 and lst[i-1] != '\n'):
                 result.append(item)
-        
-        return result
 
-    def getFromGeniusUrl(self, song_url: str):
-        """
-        Get song lyrics from a genius search url
-        """
-
-        debug(f'Fetching lyrics from url: {song_url}.')
-        response = requests.get(song_url)
-        debug(f'Got response from url: {song_url}.')
-        html = response.text
-        soup = bs4.BeautifulSoup(html, 'html.parser')
-        lyrics = []
-
-        # All the divs that start with Lyrics-sc
-        # which includes among other things the lyrics
-        # for a song
-        divs = soup.find_all('div', class_=re.compile('^Lyrics-sc'))
-        for div in divs:
-            # unfiltered_lyrics are lyrics + some promo and junk text
-            unfiltered_lyrics = div.get_text(separator='\n', strip=True).splitlines()
-            debug(f'Found lyrics in div.')
-            for c, line in enumerate(unfiltered_lyrics):
-                # First go trough the whole lyrics to determine if it should be 
-                # split by <br/> tags or song sections
-                if line == '[Intro]' or 'Lyrics' in line:
-                    if '[' not in '\n'.join(unfiltered_lyrics[c:]):
-                        # If the song doesn't have song sections it has to
-                        # be split on double <br/> tags since they (usually)
-                        # separate verses
-                        debug("The lyrics don't have any song sections, splitting by <br> tags (less effective).")
-                        div = str(div).replace('<br/><br/>', '\n\n')
-                        div = bs4.BeautifulSoup(div, 'html.parser')
-                        unfiltered_lyrics = div.get_text(separator='\n', strip=True).splitlines()
-                    else:
-                        debug("Splitting lyrics by song sections.")
-                        # The splitting happens later
-
-            debug(f'Filtering lyrics.')
-            song_started = False
-            rm_next_line = False
-            for c, line in enumerate(unfiltered_lyrics):
-                line = line.strip()
-
-                if rm_next_line:
-                    rm_next_line = False
-                    debug(f'Got instruction to skip this line: {line}')
-                    continue
-                
-                # Check if the song has started by seeing if the line says [Intro]
-                # or if the song doesn't have song sections check for Lyrics since
-                # it says Lyrics for 'song_title' at the start of almost every song
-                if line == '[Intro]' or 'Lyrics' in line:
-                    song_started = True
-
-                if not song_started:
-                    continue
-                
-                if line.startswith('['):
-                    lyrics.append('')
-
-                elif line == 'Embed':
-                    continue
-
-                elif line == 'You might also like':
-                    continue
+        return '\n'.join(result)
 
 
-                elif line.startswith('See') and line.endswith('Live'):
-                    rm_next_line = True # The next line is the ticket price
-                    continue
+    def get(self, search_string: str) -> str:
+        r = requests.get("https://lyrics.kladnik.cc/?q=" + urllib.parse.quote(search_string)).text
 
-                lyrics.append(line)
-            
-            if '\n'.join(Lyrics().truncate(lyrics[1:-1])).strip():
-                debug(f'Lyrics found.')
-                break
-        
-        truncated = Lyrics().truncate(lyrics[1:-1])
-        resources.display_info('Successfully fetched lyrics.')
+        lyrics = "[" + r.split("[", 1)[1]
 
-        return '\n'.join(truncated).strip() + '\n\n(' + song_url +')'
+        return self.truncate(lyrics.split('\n'))
 
-class GeniusURL:
-    def __init__(self):
-        self._wait = 2
-        self._search_tries = 0
-
-    def get(self, title: str, artists: str, driver):
-        base_url = 'https://genius.com/'
-
-        suffix = f"{resources.cleanTitleArtist(artists.replace(', ', ' and ').replace(' & ', ' and ').replace('&', ' and ')).replace(' ', '-')}-{resources.cleanTitleArtist(title).replace(' ', '-')}-lyrics"
-        start_url = base_url + re.sub(r'-+', '-', suffix)
-
-        resources.display_info(f"Trying with '{start_url}'.")
-
-        driver.get(start_url)
-        
-        try:
-            WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, '//img[starts-with(@alt, "Cover art for") and string-length(@src) > 0]')
-                )
-            )
-        except Exception as e:
-            pass
-        
-        song_url = driver.current_url
-
-        if driver.find_elements(By.CLASS_NAME, "render_404-headline"):
-            suffix = f"{resources.cleanTitleArtist(artists.split(', ')[0]).replace(' ', '-')}-{resources.cleanTitleArtist(title).replace(' ', '-')}-lyrics"
-            start_url = base_url + re.sub(r'-+', '-', suffix)
-
-            resources.display_info(f"Trying with '{start_url}'.")
-
-            driver.get(start_url)
-            song_url = driver.current_url
-
-            if driver.find_elements(By.CLASS_NAME, "render_404-headline"):
-                debug('Failed to get Genius url.')
-                return ''
-        
-        debug(f'{song_url=}')
-
-        return song_url
-    
 class CoverArt:
     def __init__(self):
         self._wait = 2
         self._search_tries = 0
 
-    def getFromUrl(self, song_url: str, driver) -> str:
-        try:
-            driver.get(song_url)
-
-            cover = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, '//img[starts-with(@alt, "Cover art for") and string-length(@src) > 0]')
-                )
-            )
-
-            cover_src = cover.get_attribute('src')
-            debug("Cover art URL: " + cover_src)
-        except Exception as e: 
-            print_(e)
-        
-        return cover_src
-    
-    def saveFromUrl(self, song_url: str, ascii_path: str, img_path: str, driver, density: dict, size: tuple[int, int]):
-        url = self.getFromUrl(song_url, driver)
-
+    def saveFromUrl(self, url: str, ascii_path: str, img_path: str, density: dict, size: tuple[int, int]):
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         }
