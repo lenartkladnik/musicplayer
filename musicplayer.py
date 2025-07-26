@@ -16,7 +16,7 @@ parser.add_argument('--slow', action='store_true', help="Slow down the refresh r
 parser.add_argument('--no-auto-resize', dest='no_auto_resize', action='store_true', help="Disable automatic ajustment to resizing of the terminal.")
 parser.add_argument('--no-clear', dest='no_clear', action='store_true', help="Don't ever print \\ESC[2J (for debuging).")
 parser.add_argument('--no-ascii', dest='no_ascii', action='store_true', help="Don't display ascii codes (for debuging).")
-# parser.add_argument('-i', '--instances', dest='instances', type=int, default=1, help="Set the number of selenium instances used for the downloader.")
+parser.add_argument('--no-print', dest='no_print', action='store_true', help="Don't print anything.")
 parser.add_argument('--debug', default=0, type=int, help="Turn on debug mode with the level provided.")
 
 try:
@@ -25,9 +25,6 @@ except argparse.ArgumentError:
     exit()
 
 def main():
-    # instances = args.instances
-    instances = 1
-
     if args.debug:
         resources.DEBUG = True
         resources.DEBUG_LEVEL = args.debug
@@ -35,6 +32,9 @@ def main():
 
     if args.no_ascii:
         resources.DISABLE_ASCII = True
+
+    if args.no_print:
+        resources.DISABLE_STDOUT = True
 
     if args.slow:
         resources.REDRAW_INTERVAL = 0.25
@@ -61,34 +61,12 @@ def main():
 
         # Create playlist cover
         Playlist(args.name)
-        
+
     elif args.sync_playlist:
         resources.display_info_mode = True
         playlist = Playlist(args.name, no_cover=True)
 
-        resources._init_selenium_driver(instances)
-
-        spotify = resources.Spotify()
-
-        total = 0
-        
-        for song in spotify.get_songs(args.sync_playlist):
-            if song:
-                playlist.add(' '.join(song), resources.drivers[0], not args.no_lyrics)
-
-            total += 1
-
-        # Create playlist cover
-        Playlist(args.name)
-
-        print_(resources.ESCAPE_CODE + '[38;5;40mDone.' + resources.ESCAPE_CODE + '[0m')
-        try:
-            print_(f'Got {resources.successes['audio']}/{total} ({round(resources.successes['audio'] / total, 2) * 100}%) audio files.')
-            print_(f'Got {resources.successes['lyrics']}/{total} ({round(resources.successes['lyrics'] / total, 2) * 100}%) lyrics.')
-            print_(f'Got {resources.successes['cover_art']}/{total} ({round(resources.successes['cover_art'] / total, 2) * 100}%) cover arts.')
-        except:
-            pass
-        print_()
+        playlist.sync(playlist.SyncType.spotify, args.sync_playlist)
 
     elif args.remove:
         playlist = Playlist(args.name)
@@ -118,10 +96,10 @@ if __name__ == '__main__':
         resources.debug('Received a keyboard interrupt.')
         resources.debug(traceback.format_exc())
         print()
-        
+
     except Exception as e:
         resources.debug('Got exception in main:')
         resources.debug(traceback.format_exc())
-        
+
     finally:
         resources.cleanup()

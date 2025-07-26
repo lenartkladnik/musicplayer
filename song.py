@@ -33,7 +33,7 @@ class Song:
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                error_code = ydl.download(URLS)
+                ydl.download(URLS)
 
         except yt_dlp.utils.DownloadError:
             title = resources.cleanTitleArtist(title)
@@ -41,7 +41,7 @@ class Song:
             ydl_opts['outtmpl'] = f'{path}/{b64encode(title.encode(title_encoding)).decode()}.{ext}'
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                error_code = ydl.download(URLS)
+                ydl.download(URLS)
 
     def downloadFromSearch(self, search_string: str, title: str, path: str, driver, ext: str, title_encoding: str, max_tries: int = 10, xpath: str = '//a[@id="video-title"]'):
         self._tries += 1
@@ -58,7 +58,7 @@ class Song:
             time.sleep(0.2)
 
         if resources.SEARCH_STRING_LYRICS:
-            search_string = 'lyrics ' + search_string
+            search_string = search_string + ' lyrics'
         for i in search_string:
             actions.send_keys(i).perform()
 
@@ -71,15 +71,18 @@ class Song:
             )
             resources.debug('Got video div.')
             video_url = video.get_attribute('href')
+            if video_url:
+                video_url = video_url.split('&', 1)[0]
+
             resources.debug(f'Got video url: {video_url}')
 
-        except Exception as e:
+        except Exception:
             if self._tries < max_tries:
                 self._wait += 1
                 resources.debug(f'Try {self._tries}.')
                 resources.display_info(f'Try {self._tries} for getting audio.')
-                return self.downloadFromSearch(search_string, title, path, driver, title_encoding, max_tries)
-            
+                return self.downloadFromSearch(search_string, title, path, driver, ext, title_encoding, max_tries, xpath)
+
             raise TimeoutError('Could not download song.')
 
         if not video_url:
@@ -87,8 +90,8 @@ class Song:
             if self._tries < max_tries:
                 resources.debug(f'Try {self._tries}.')
                 self._wait += 1
-                return self.downloadFromSearch(search_string, title, path, title_encoding)
-            
+                return self.downloadFromSearch(search_string, title, path, driver, ext, title_encoding, max_tries, xpath)
+
             raise TimeoutError('Could not download song.')
-        
+
         return self.downloadFromUrl(video_url, title, path, ext, title_encoding)

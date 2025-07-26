@@ -40,21 +40,22 @@ display_info_mode = False
 ansi_escape = re.compile(ESCAPE_CODE + r'\[[0-?]*[ -/]*[@-~]')
 
 def print_(*values: object, sep: str | None = " ", end: str | None = "\n", file = None, flush = False) -> None:
-    new_values = list(values)
+    if not DISABLE_STDOUT:
+        new_values = list(values)
 
-    if DISABLE_ASCII:
-        new_values = [ansi_escape.sub('', str(x)) for x in new_values]
+        if DISABLE_ASCII:
+            new_values = [ansi_escape.sub('', str(x)) for x in new_values]
 
-    print(*new_values, sep=sep, end=end, file=file, flush=flush)
+        print(*new_values, sep=sep, end=end, file=file, flush=flush)
 
 def debug(value: object, status: str = 'info', color: str = '', level: int = 0) -> None:
     """
     debug print_
     """
 
-    if DEBUG and level <= DEBUG_LEVEL:
+    if DEBUG and level <= DEBUG_LEVEL and not DISABLE_STDOUT:
         stack = inspect.stack() # Inspect the stack to later find the function who called debug
-        
+
         debug_msg = f'[{dt.now().strftime("%H:%M:%S")}] [{status.upper()}] [{stack[1].filename.split('/')[-1].split('\\')[-1]} -> {stack[1].function}] {value}'
         print_(color + debug_msg + ESCAPE_CODE + '[0m')
         LOG.append(debug_msg)
@@ -121,7 +122,6 @@ def _get_driver(geckodriver_path: str, firefox_options: Options) -> webdriver.Fi
             )
 
     return driver
-
 
 def _init_selenium_driver(instances: int = 1):
     global firefox_options
@@ -195,7 +195,7 @@ class Keybinds:
         shuffle: list[str] = ['e']
         search: list[str] =  ['f', '/']
         delete: list[str] = [Key.common.delete]
-     
+
     class control:
         play: list[str] = ['p', ' ']
         enter: list[str] = ['\n']
@@ -213,7 +213,7 @@ class Keybinds:
 class Keybind:
     class goto:
         top: str = 'gg'
-        bottom: str = 'gb'
+        bottom: str = 'G'
 
 def getch(blocking: bool = False) -> str | None:
     """
@@ -270,13 +270,13 @@ def db_print_(*values: str, sep: str = " ", end: str | None = "\n", file: str | 
     if not DISABLE_STDOUT:
         if not no_clear:
             print_("\r" + ESCAPE_CODE + "[0K", end="", flush=flush) # Add \ESC[0K to start of values to clear any weird artifacts in front of the string
-        
+
         if MINIMALIST_LEVEL == 2:
             # Remove all ansi escape codes
             values = tuple([ansi_escape.sub('', str(value)) for value in values])
-        
+
         print_(*values, end=end, sep=sep, file=file, flush=flush)
-        
+
         if LOG_PATH:
             LOG.append(sep.join(values))
 
@@ -284,7 +284,7 @@ def cleanTitleArtist(s: str) -> str:
     debug(f'Stripping: {s}')
 
     s = unidecode(s)
-    s = s.lower().replace("'", '').replace('.', '')
+    s = s.replace("'", '').replace('.', '')
     s = s.split(' - ')[0]
 
     p = False
@@ -316,7 +316,7 @@ def stripNonAlphaNum(s: str) -> str:
     """
     Removes non alpha numerical characters (excluding space) from string
     """
-    
+
     n_s = ''
     for i in s:
         n_s += i if i.isalnum() or i == ' ' else ''
@@ -327,7 +327,7 @@ def replaceNonAlphaNum(s: str, n: str) -> str:
     """
     Replaces non alpha numerical characters (excluding space) in string
     """
-    
+
     n_s = ''
     for i in s:
         if i.isalnum() or i == ' ':
@@ -354,14 +354,14 @@ def matching(s1: str, s2: str, split: str = ' ', diff: int = 2, instant_match: b
     if (s1 in s2) or (s2 in s1) and (not ln_match):
         debug('Strings include each other.')
         return True
-    
+
     matches = 0
     s1_split = s1.strip().split(split)
     s2_split = s2.strip().split(split)
     if len(s1_split) != len(s2_split):
         debug("Length doesn't match")
         return False
-    
+
     for c in range(len(min(s1_split, s2_split, key=len))):
         i = s1_split[c]
         j = s2_split[c]
@@ -376,15 +376,15 @@ def matching(s1: str, s2: str, split: str = ' ', diff: int = 2, instant_match: b
             debug(f'New matching section found, now up to {matches}.')
 
             matches += 1
-    
+
     if matches >= diff:
         debug('Match found.')
         return True
-    
+
     debug('Not a match.')
     return False
 
-def coverImgToText(image: Image, density: dict, w: int, h: int) -> str:
+def coverImgToText(image, density: dict, w: int, h: int) -> str:
     """
     Convert an image to ascii art with ansi color codes
     """
@@ -392,29 +392,29 @@ def coverImgToText(image: Image, density: dict, w: int, h: int) -> str:
     debug('Getting ascii cover art from image.')
     im = image
     debug('Opened image.')
-        
+
     im = im.resize((w, h), Image.Resampling.LANCZOS) # Resize to 2x width since text characters are about 2x taller than they are wide
     debug('Resized image.')
     mono = im.convert('L') # Get a clone of the image in monochrome (for the density)
     debug('Converted image clone to monochrome.')
     im = im.convert('RGB') # Ensure the image is in RGB
     debug('Converted image to RGB.')
-    
+
     img = []
     tmp = ''
-    
+
     for y in range(im.height):
         for x in range(im.width):
             mono_pixel = mono.getpixel((x, y))
             r, g, b = im.getpixel((x, y))
-            
+
             density_char, _ = min(density.items(), key=lambda i: abs(mono_pixel - i[1])) # The character from the density map
             tmp += ESCAPE_CODE + f"[1m" + ESCAPE_CODE + f"[38;2;{r};{g};{b}m{density_char}" + ESCAPE_CODE + "[0m" # Combine the RGB and density character (this is one character)
-        
+
         img.append(tmp)
         debug(f'Converted row {y + 1} to ascii.', level=1)
         tmp = ''
-    
+
     debug('Got ascii cover art from image.')
 
     return '\n'.join(img)
@@ -424,7 +424,7 @@ def coverArtToText(fp: str, density: dict, w: int, h: int) -> str:
         im = Image.open(fp)
 
         return coverImgToText(im, density=density, w=w, h=h)
-    
+
     display_info('Cover art not found.')
     return '\n'.join([list(density.keys())[0] * w] * h)
 
@@ -464,6 +464,11 @@ class progressBar:
 
 class FontError(Exception):...
 
+class str_(str):
+    def back_replace(self, string: str, old: str, new: str) -> str:
+        head, _sep, tail = string.rpartition(old)
+        return head + new + tail
+
 class Figlet: # Old bad code don't bother
     def __init__(self, font_name: str, download: bool = True) -> None:
         """
@@ -487,12 +492,12 @@ class Figlet: # Old bad code don't bother
             raise FontError(f"No font named '{font_name}' could be found.")
 
         self.width = 0
-    
+
     def _check_width(self, string: str, width: int) -> bool:
         if self.width + len(string.split("\n")[0]) > width:
             self.width = 0
             return False
-        
+
         else:
             self.width += len(string.split("\n")[0])
             return True
@@ -501,6 +506,8 @@ class Figlet: # Old bad code don't bother
         vars = self.font.split("\n")[0].split("flf2a")[1].split(" ")
         blank = vars[0]
         height = vars[1]
+
+        contents = ""
 
         for c, line in enumerate(self.font.split("\n")):
             if line.replace(blank, "").replace(indicator, "").replace(" ", "") == "" and indicator in line and blank in line:
@@ -535,7 +542,7 @@ class Figlet: # Old bad code don't bother
             chars_list.append(char_line)
 
         return chars_list
-    
+
     def get(self, text: str, indicator: str = "@", space: str = " " * 3, padding: int = 0, width: int = 120) -> str:
         """
         Return text in a given figlet font wrapped to width.\n
@@ -548,12 +555,12 @@ class Figlet: # Old bad code don't bother
 
         for line in parsed:
             lines.append(self._next_vals(*line))
-        
+
         return "\n".join(lines)
-    
-    def _next_vals(self, *values: str, padding: int = 0) -> str:
+
+    def _next_vals(self, *values, padding: int = 0) -> str:
         values = list(map(lambda t: t + " " * padding, values))
-        values[-1] = str(values[-1]).back_replace(" " * padding, "") if padding != 0 else values[-1]
+        values[-1] = values[-1].back_replace(" " * padding, "") if padding != 0 else values[-1]
         lines = [arg.split("\n") for arg in values]
         max_lines = max(len(line) for line in lines)
 
@@ -562,11 +569,11 @@ class Figlet: # Old bad code don't bother
                 line.append(" " * padding)
 
         display_lines = ["".join(parts) for parts in zip(*lines)]
-            
+
         display = "\n".join(display_lines)
-            
+
         return display
-    
+
 def exception(message: str):
     print_(ESCAPE_CODE + f'[38;5;203m{message}' + ESCAPE_CODE + '[0m')
     cleanup()
@@ -581,17 +588,20 @@ class Spotify:
         songs = []
 
         if ("open.spotify.com" in playlist_id):
-            playlist_id = playlist_id.split("playlist/")[1]
+            playlist_id = playlist_id.split('&')[0].split("playlist/")[1]
 
         playlist_url = f'https://mpbe.kladnik.cc/playlist/{playlist_id}'
 
         response = requests.get(playlist_url)
         playlist_data = response.json()
 
+        i = 0
         for item in playlist_data['items']:
             track = item['track']
             track_name = track['name']
             artists = ', '.join([artist['name'] for artist in track['artists']])
+            debug(f"{track_name} by {artists} [{i}]", level=2)
+            i+=1
             songs.append([track_name, artists])
 
         return songs
@@ -601,11 +611,11 @@ def getSongDataPath(dir_path: str, song_b64: str, ext: str = '*') -> str:
 
     if files:
         return files[0]
-    
+
     return ""
 
 def existsSongData(dir_path: str, song_b64: str, ext: str = '*') -> bool:
     data = getSongDataPath(dir_path=dir_path, song_b64=song_b64, ext=ext)
-    
-    return data and os.path.exists(data)
-    
+
+    return bool(data and os.path.exists(data))
+

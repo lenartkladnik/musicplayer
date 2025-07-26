@@ -1,13 +1,9 @@
-from os import truncate
 import resources
-from resources import ESCAPE_CODE, debug, print_
+from resources import ESCAPE_CODE, debug
 import requests
 import urllib.parse
 from spotify_background_color import SpotifyBackgroundColor
 import numpy as np
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 import io
 from PIL import Image
 
@@ -24,13 +20,14 @@ class Lyrics:
 
         return '\n'.join(result)
 
+    def cleanup(self, lyrics: str):
+        return lyrics.replace("Ä", "č").replace("Å¡", "š").replace("Ðµ", "e").replace("â", "—")
 
     def get(self, search_string: str) -> str:
         r = requests.get("https://lyrics.kladnik.cc/?q=" + urllib.parse.quote(search_string)).text
 
         lyrics = "[" + r.split("[", 1)[1]
-        lyrics = lyrics.replace("Ä", "č").replace("Å¡", "š").replace("Ðµ", "e")
-
+        lyrics = self.cleanup(lyrics)
         return self.truncate(lyrics.split('\n'))
 
 class CoverArt:
@@ -38,7 +35,7 @@ class CoverArt:
         self._wait = 2
         self._search_tries = 0
 
-    def saveFromUrl(self, url: str, ascii_path: str, img_path: str, density: dict, size: tuple[int, int]):
+    def saveFromUrl(self, url: str, ascii_path: str, img_path: str):
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         }
@@ -58,8 +55,9 @@ class CoverArt:
                 f.write(str(dc) + '\n')
 
             cover.save(img_path)
-            
-            debug(f"Image file saved to '{img_path}'. Dominant colour saved to '{ascii_path}'.")
+
+            debug(f"Image file saved to '{img_path}'.")
+            debug(f"Dominant colour saved to '{ascii_path}'.")
             resources.display_info('Successfully fetched cover art.')
         else:
             resources.exception(f"Failed to download the file. Status code: {response.status_code}")

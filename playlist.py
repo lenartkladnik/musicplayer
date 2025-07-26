@@ -1,5 +1,8 @@
 import base64
 import os
+from typing import Any
+from matplotlib import artist
+from matplotlib.pyplot import title
 import requests
 import urllib.parse
 from song import Song
@@ -10,7 +13,7 @@ import numpy as np
 import vlc
 import time
 import resources
-from resources import cleanTitleArtist, debug, print_
+from resources import cleanTitleArtist, print_
 from base64 import b64encode, b64decode
 import glob
 import random
@@ -77,17 +80,20 @@ class Playlist:
         self.cover_ext = 'png'
         self.ascii_cover_ext = 'cover'
         self.queue_ext = 'queue'
+        self.id_ext = 'id'
 
         self.main_fp = f'{fp.PLAYLISTS}/{name}'
-        self.songs_fp = f'{fp.PLAYLISTS}/{name}/{fp.SONGS}'
-        self.lyrics_fp = f'{fp.PLAYLISTS}/{name}/{fp.LYRICS}'
-        self.cover_art_fp = f'{fp.PLAYLISTS}/{name}/{fp.COVER_ART}'
-        self.queue = f'{fp.PLAYLISTS}/{name}/{name}.{self.queue_ext}'
+        self.songs_fp = f'{self.main_fp}/{fp.SONGS}'
+        self.lyrics_fp = f'{self.main_fp}/{fp.LYRICS}'
+        self.cover_art_fp = f'{self.main_fp}/{fp.COVER_ART}'
+        self.queue = f'{self.main_fp}/{name}.{self.queue_ext}'
         self.playlist_cover_fp = f'{self.main_fp}/{fp.PLAYLIST}.{self.cover_ext}'
+        self.id_fp = f'{self.main_fp}/{name}.{self.id_ext}'
 
         self.bar = ['=', '+', '-']
 
         self.width, self.height = shutil.get_terminal_size((80, 20))
+        self.height -= 2
 
         self.small_img = (floor(self.width / 12), floor(self.width / 24))
         self.giant_img = (floor(self.width / 5), floor(self.width / 10))
@@ -108,9 +114,17 @@ class Playlist:
         self.current_song = 0
         self.playing = []
 
+        self.default_dc = (66, 66, 66)
+
         self.songs = []
 
         self.mode = mode.normal
+
+        try:
+            with open(self.id_fp, 'x') as f:
+                f.write('')
+        except:
+            pass
 
         try:
             figlet_font = 'big.flf'
@@ -154,9 +168,9 @@ class Playlist:
             self.dcs = {}
 
             for song in self.songs:
-                b64 = song[3]
+                _, _, b64 = self.unpack_song(song)
 
-                dc = (255, 255, 255)
+                dc = self.default_dc
 
                 try:
                     song_data = resources.getSongDataPath(self.cover_art_fp, b64, self.ascii_cover_ext)
@@ -172,17 +186,18 @@ class Playlist:
                     self.dcs.update(
                         {b64: dc}
                     )
-                except Exception as e:
-                    resources.display_info(f"Failed to load '{song[1]} by {song[2]}'.", 'warn', resources.ESCAPE_CODE + '[38;5;214m')
+                except Exception:
+                    t, a, _ = self.unpack_song(song)
+                    resources.display_info(f"Failed to load '{t} by {a}'.", 'warn', resources.ESCAPE_CODE + '[38;5;214m')
                     resources.debug(f'({b64=})', 'warn', resources.ESCAPE_CODE + '[38;5;214m')
                     self.songs.remove(song)
 
-        except Exception as e:
+        except Exception:
             resources.debug(f'Got exception whilst loading playlist:')
             resources.debug(traceback.format_exc())
             try:
                 self.fix_integrity()
-            except Exception as e:
+            except Exception:
                 resources.debug(f'Got exception whilst fixing playlist integrity:')
                 resources.debug(traceback.format_exc())
 
@@ -222,7 +237,10 @@ class Playlist:
                 b64 = f.split(self.song_ext)[0]
                 bad = False
                 for song in self.songs:
-                    if song[3] == b64:
+                    if len(song) <= 3:
+                        continue
+
+                    if self.unpack_song(song)[2] == b64:
                         bad = True
                         break
                 if bad:
@@ -237,7 +255,8 @@ class Playlist:
 
         with open(self.queue, 'a') as f:
             for song in songs:
-                f.write(f'{song[0]},{song[1]}\n')
+                _, _, b64 = self.unpack_song(song)
+                f.write(f'{song[0]},{b64}\n')
 
         self.songs = self.loadSongs()
 
@@ -253,6 +272,8 @@ class Playlist:
 
         resources.debug(f"Removing: {to_cleanup}");
 
+        removed = []
+
         for b64 in to_cleanup:
             try:
                 os.remove(self.lyrics_fp + "/" + b64 + "." + self.lyrics_ext)
@@ -267,12 +288,24 @@ class Playlist:
                 os.remove(self.songs_fp + "/" + b64 + "." + self.song_ext)
             except OSError as e: resources.debug(f"Error whilst removing '{self.songs_fp + b64 + self.song_ext}': {e}", level=2)
 
+            removed.append(b64)
+
+        return removed
+
+    def generateSongFromb64(self, b64: str, timestamp: float | str | None = None) -> list[str]:
+        if not timestamp: timestamp = datetime.now().timestamp()
+        return [str(timestamp), *b64decode(b64).decode(self.title_encoding).split(' by '), b64]
+
     def fix_integrity(self):
         self.findSongs()
 
         filtered = []
-        for song in self.songs:
-            b64 = song[3]
+        for f in os.listdir(self.songs_fp):
+            b64 = f.split("." + self.song_ext)[0]
+            try: b64decode(b64)
+            except:
+                resources.debug('Invalid base 64 string for unknown song.')
+                continue
 
             if not resources.existsSongData(self.songs_fp, b64):
                 resources.debug(f'Missing audio for {b64decode(b64).decode(self.title_encoding)}.')
@@ -289,7 +322,7 @@ class Playlist:
 
             else:
                 try:
-                    with Image.open(resources.getSongDataPath(self.cover_art_fp, b64, self.cover_ext)) as im: pass
+                    with Image.open(resources.getSongDataPath(self.cover_art_fp, b64, self.cover_ext)) as _: pass
                 except UnidentifiedImageError:
                     song_data = resources.getSongDataPath(self.cover_art_fp, b64)
                     if song_data:
@@ -299,26 +332,31 @@ class Playlist:
             if not resources.existsSongData(self.cover_art_fp, b64, self.ascii_cover_ext):
                 resources.debug(f'Missing cover ascii art for {b64decode(b64).decode(self.title_encoding)}.')
 
-                dc = (255, 255, 255)
+                dc = self.default_dc
 
                 with open(f'{self.cover_art_fp}/{b64}.{self.ascii_cover_ext}', 'w+') as f:
                     f.write(str(dc) + '\n')
 
-            filtered.append(song)
+            filtered.append(b64)
 
-        self.cleanupSongData()
-        self.songs = filtered
+        removed = self.cleanupSongData()
+        filtered = list( set(filtered) - set(removed) )
+        self.songs = [self.generateSongFromb64(b64) for b64 in filtered]
+        self.createCover()
+
+        resources.debug(f'Writting: {self.songs}')
 
         with open(self.queue, 'w') as f:
             for song in self.songs:
-                f.write(f'{song[0]},{song[3]}\n')
+                f.write(f'{song[0]},{self.unpack_song(song)[2]}\n')
 
     def existsSong(self, title: str, artists: str) -> bool:
         title = title.split(' - ')[0].strip()
         resources.debug(f"Checking if '{title}', '{artists}' exists in playlist.", level=1)
 
         for song in self.songs:
-            if song[1] == title and song[2] == artists:
+            t, a, _ = self.unpack_song(song)
+            if t == title and a == artists:
                 resources.debug('Song exists in playlist.')
                 return True
 
@@ -328,7 +366,8 @@ class Playlist:
         resources.debug(f"Title and artists modified: '{title}', '{artists}'.", level=2)
 
         for song in self.songs:
-            if song[1] == title and song[2] == artists:
+            t, a, _ = self.unpack_song(song)
+            if t == title and a == artists:
                 resources.debug('Song exists in playlist.')
                 return True
 
@@ -354,7 +393,7 @@ class Playlist:
             if img != None:
                 img = img.resize((size, size))
             else:
-                img = Image.new('RGB', (size, size), 'white')
+                img = Image.new('RGB', (size, size), self.default_dc)
 
             x, y = pos
 
@@ -377,12 +416,7 @@ class Playlist:
         with open(self.queue) as f:
             raw = list(map(lambda x: x.split(','), f.read().splitlines()))
 
-        # timestamp = song[0]
-        # title = song[1]
-        # artist = song[2]
-        # b64 = song[3]
-
-        songs = [[i[0], *b64decode(i[1]).decode(self.title_encoding).split(' by '), i[1]] for i in raw]
+        songs = [self.generateSongFromb64(i[1], i[0]) for i in raw]
 
         return songs
 
@@ -393,9 +427,7 @@ class Playlist:
     def remove_song(self, search_string: str) -> bool:
         match = False
         for song in self.songs:
-            title = song[1]
-            artists = song[2]
-            b64 = song[3]
+            title, artists, b64 = self.unpack_song(song)
 
             if resources.matching(f'{title}', search_string) or resources.matching(f'{artists}', search_string):
                 if input(f'Delete {title} by {artists}? [y/N]').lower() == 'y':
@@ -414,7 +446,7 @@ class Playlist:
         return match
 
     def _remove_song(self, song: list[str]) -> bool:
-        b64 = song[3]
+        b64 = self.unpack_song(song)[2]
 
         self.songs.remove(song)
 
@@ -446,13 +478,11 @@ class Playlist:
         song = Song()
         tries = 0
 
-        title = title.split(' - ')[0].strip()
-
         while True:
             try:
-                r = song.downloadFromSearch(f'{title} by {artists}', f'{title} by {artists}', self.songs_fp, driver, self.song_ext, self.title_encoding)
+                song.downloadFromSearch(f'{title} by {artists}', f'{title} by {artists}', self.songs_fp, driver, self.song_ext, self.title_encoding)
                 break
-            except Exception as e:
+            except Exception:
                 resources.debug(f'Got exception whilst downloading audio:')
                 resources.debug(traceback.format_exc())
 
@@ -471,8 +501,16 @@ class Playlist:
         resources.successes['audio'] += 1
         return True
 
-    def _addFromGenius(self, search_string: str, get_lyrics: bool = True):
+    def _addFromGenius(self, search_string: str, get_lyrics: bool = True) -> list[str]:
         success = True
+
+        try:
+            title, artists = search_string.split(' by ')
+        except:
+            title, artists = ('', '')
+        search_string = cleanTitleArtist(search_string).lower().split(', ')[0]
+
+        resources.debug(f"Querying Genius API with q={search_string}")
 
         template = "https://genius.com/api/search/multi?experiment=not-eligible&per_page=5&q=" + urllib.parse.quote(search_string)
 
@@ -484,26 +522,43 @@ class Playlist:
 
         json_r = r.json()
 
-        result = json_r["response"]["sections"][0]["hits"][0]["result"]
+        result = {}
+        for section in json_r['response']['sections']:
+            if section['type'] == 'song':
+                for hit in section['hits']:
+                    hit_title = hit['result']['title']
+                    hit_artist = hit['result']['primary_artist']['name']
 
-        cover_art_url: str = ""
-        try:
-            cover_art_url = result["header_image_url"]
-        except KeyError:
-            cover_art_url = result["cover_art_url"]
-        title: str = ""
-        try:
-            title = cleanTitleArtist(result["full_title"].split(" by")[0])
-        except KeyError:
-            title = cleanTitleArtist(result["name"])
-        artists: str = result["primary_artist_names"]
+                    if title and artists:
+                        if title.lower() in hit_title.lower() and artists.lower() in hit_artist.lower():
+                            result = hit['result']
 
-        b64rep = b64encode(f'{title} by {artists}'.encode(self.title_encoding)).decode()
+                    else:
+                        title, artists = (hit_title, hit_artist)
+                        result = hit['result']
+                        break
+
+        if not result:
+            resources.debug("Couldn't get accurate result from Genius API, trying a more general approach.", 'warn')
+            result = json_r["response"]["sections"][0]["hits"][0]["result"]
+
+        cover_art_url = ""
+        if result:
+            for i in ["header_image_url", "cover_art_url", "header_image_thumbnail_url", "song_art_image_thumbnail_url"]:
+                try:
+                    cover_art_url = result[i]
+                    break
+                except KeyError:
+                    pass
+
+        resources.debug(f"Got cover art url: {cover_art_url}")
+
+        b64rep = b64encode(f"{title} by {artists}".encode(self.title_encoding)).decode()
 
         coverArt = CoverArt()
         try:
-            coverArt.saveFromUrl(cover_art_url, f'{self.cover_art_fp}/{b64rep}.{self.ascii_cover_ext}', f'{self.cover_art_fp}/{b64rep}.{self.cover_ext}', density, self.small_img)
-        except Exception as e:
+            coverArt.saveFromUrl(cover_art_url, f'{self.cover_art_fp}/{b64rep}.{self.ascii_cover_ext}', f'{self.cover_art_fp}/{b64rep}.{self.cover_ext}')
+        except Exception:
             resources.debug(f'Got exception whilst getting cover art:')
             resources.debug(traceback.format_exc())
             print_(resources.ESCAPE_CODE + f"[38;5;203mFailed to get cover art for '{title} by {artists}'." + resources.ESCAPE_CODE + "[0m") 
@@ -511,11 +566,11 @@ class Playlist:
 
         if get_lyrics:
             try:
-                lyrics = Lyrics().get(f"{title} - {artists}")
+                lyrics = Lyrics().get(search_string.replace(' by ', ' - ', 1))
                 with open(f'{self.lyrics_fp}/{b64rep}.{self.lyrics_ext}', 'w') as f:
                     f.write(lyrics)
 
-            except Exception as e:
+            except Exception:
                 resources.debug(f'Got exception whilst getting lyrics:')
                 resources.debug(traceback.format_exc())
                 print_(resources.ESCAPE_CODE + f"[38;5;203mFailed to get lyrics for '{title} by {artists}'." + resources.ESCAPE_CODE + "[0m")
@@ -530,19 +585,19 @@ class Playlist:
             os.remove(resources.getSongDataPath(self.cover_art_fp, b64rep, self.cover_ext))
             os.remove(resources.getSongDataPath(self.cover_art_fp, b64rep, self.ascii_cover_ext))
 
-            Image.new('RGB', (1, 1), 'white').save(resources.getSongDataPath(self.cover_art_fp, b64rep, self.cover_ext))
+            Image.new('RGB', (1, 1), self.default_dc).save(resources.getSongDataPath(self.cover_art_fp, b64rep, self.cover_ext))
             im = Image.open(resources.getSongDataPath(self.cover_art_fp, b64rep, self.cover_ext))
             try:
                 dc = SpotifyBackgroundColor(np.array(im)).best_color()
                 resources.debug(f'Got background color: {dc}.')
             except Exception:
                 resources.debug('Failed to get background color. Using white as default.', 'error', resources.ESCAPE_CODE + '[31m')
-                dc = (255, 255, 255)
+                dc = self.default_dc
 
             with open(resources.getSongDataPath(self.cover_art_fp, b64rep, self.ascii_cover_ext), 'w+') as f:
                 f.write(str(dc) + '\n')
 
-        except Exception as e:
+        except Exception:
             resources.debug('Got exception whilst checking cover art:')
             resources.debug(traceback.format_exc())
 
@@ -559,6 +614,22 @@ class Playlist:
 
         return [title, artists]
 
+    def unpack_song(self, song: list[str]):
+        if len(song) == 2:
+            # Broken song; with (probably) timestamp and base64 string
+            d = b64decode(song[1]).decode(self.title_encoding).split(' by ')
+
+            if len(d) == 1:
+                return [d[0], '', song[1]]
+
+            return [d[0], d[1], song[1]]
+
+        elif len(song) == 3:
+            # Broken song; (probably) without artists
+            return [song[1], '', song[2]]
+
+        return [song[1], song[2], song[3]]
+
     def add_batch(self, titles: list[str], artists_list: list[str], instances, lyrics: bool = True):
         to_add = []
         for title, artists in zip(titles, artists_list):
@@ -571,7 +642,7 @@ class Playlist:
         inst = 0
         processes: list[Process] = []
         for title, artists in to_add:
-            proc = Process(target=self._addFromGenius, args=(title + " - " + artists, resources.drivers[1], lyrics))
+            proc = Process(target=self._addFromGenius, args=(title + " by " + artists, lyrics))
             processes.append(proc)
             proc.start()
 
@@ -584,6 +655,58 @@ class Playlist:
 
         for proc in processes:
             proc.join()
+
+    def existsSongInList(self, title: str, artists: str):
+        for song in self.songs:
+            song_title, song_artists, _ = self.unpack_song(song)
+            if resources.matching(song_title, title) and resources.matching(song_artists, artists):
+                return True
+
+        return False
+
+    class SyncType:
+        spotify: str = 'spotify'
+
+    def sync(self, type_: str, id: str, do_lyrics: bool = True):
+        resources._init_selenium_driver()
+
+        not_parsed = []
+
+        songs = []
+        if type_ == self.SyncType.spotify:
+            spotify = resources.Spotify()
+            songs = spotify.get_songs(id)
+
+        bar = None
+        disable_stdout_state = resources.DISABLE_STDOUT
+        if not resources.DEBUG:
+            resources.DISABLE_STDOUT = True
+            bar = resources.progressBar(len(songs), self.width, "Syncing...")
+
+        for song in songs:
+            if song and not self.existsSongInList(*song):
+                self.add(' by '.join(song), resources.drivers[0], do_lyrics)
+
+            else:
+                not_parsed.append(' by '.join(song))
+
+            if bar:
+                bar.next()
+
+        self.fix_integrity()
+
+        print_(resources.ESCAPE_CODE + '[38;5;40mDone.' + resources.ESCAPE_CODE + '[0m')
+        print_("Skipped these because they were deemed to be already in the playlist:")
+        for i in not_parsed:
+            print_(f"    - {i}")
+        print_()
+
+        resources.drivers[0].quit()
+
+        with open(self.id_fp, 'a') as f:
+            f.write(f"{type_}:{id}:{'1' if do_lyrics else '0'}")
+
+        resources.DISABLE_STDOUT = disable_stdout_state
 
     def update_display(self, buffer: list, instructions: str | None = ''):
         buffer = [';'] + buffer
@@ -689,7 +812,7 @@ class Playlist:
                     self._update_list_view(self.songs)
 
                 elif string == f'{resources.Key.common.command}remove':
-                    b64 = songs[self.list_sel][3]
+                    b64 = self.unpack_song(songs[self.list_sel])[2]
 
                     songs.pop(self.list_sel)
                     self.songs = songs
@@ -700,16 +823,17 @@ class Playlist:
                         pass
 
                     count -= 1
-                    self.list_sel -= 1
+                    if self.list_sel > 0:
+                        self.list_sel -= 1
 
-                    self.songs = self.sortSongs(self.loadSongs())
                     self.fix_integrity()
+                    self.songs = self.sortSongs(self.loadSongs())
                     songs = self.songs
 
                     self._update_list_view(self.songs)
 
                 elif string.startswith(f'{resources.Key.common.command}add '):
-                    string = string.split('add ', 1)[1]
+                    string = string.split('add ', 1)[1].replace(' - ', ' by ')
 
                     resources.display_info_mode = True
                     resources._init_selenium_driver()
@@ -721,28 +845,37 @@ class Playlist:
                     resources.display_info_mode = False
 
                     count += 1
+                    if self.list_sel < count:
+                        self.list_sel += 1
 
+                    self.fix_integrity()
                     self.songs = self.sortSongs(self.loadSongs())
                     songs = self.songs
-                    self.fix_integrity()
 
                     self._update_list_view(self.songs)
 
                     resources.drivers[0].quit()
 
+                elif string.startswith(f'{resources.Key.common.command}sync'):
+                    to_sync = [];
+                    with open(self.id_fp, 'r') as f:
+                        for l in f.readlines():
+                            to_sync.append(l.split(':'))
+
+                    for el in to_sync:
+                        self.sync(el[0], el[1], el[2] == '1')
+
                 elif string.startswith(resources.Key.common.command):
                     self._update_list_view(self.songs)
 
             time.sleep(self.interval)
-    
+
     def _update_list_view(self, songs):
         buffer = []
         w, h = self.small_img
 
         for idx, song in enumerate(songs[self.start_area:self.end_area]):
-            title = song[1]
-            artist = song[2]
-            b64 = song[3]
+            title, artist, b64 = self.unpack_song(song)
 
             cover_art = resources.coverArtToText(resources.getSongDataPath(self.cover_art_fp, b64, self.cover_ext), density, w, h)
 
@@ -766,8 +899,7 @@ class Playlist:
         matches = []
 
         for song in self.songs:
-            title = song[1]
-            artists = song[2]
+            title, artists, _ = self.unpack_song(song)
 
             for s in string.split('/'):
                 if resources.matching(title, s) or any([resources.matching(x, s) for x in artists.split(', ')]):
@@ -780,7 +912,7 @@ class Playlist:
         self.current_song = 0
 
         self.list_view(matches)
-    
+
     def handle_next(self):
         if self.shuffle:
             songs = self.playing
@@ -791,7 +923,7 @@ class Playlist:
                 songs = self.shuffleSongs(songs)
 
             if not resources.DEBUG: print_() # Fix exit when playing song from search without debug mode on
-                
+
             self.play_view(songs[self.current_song])
 
         else:
@@ -800,9 +932,7 @@ class Playlist:
     def play_view(self, song: list[str]):
         resources.reset_screen()
 
-        title: str = song[1]
-        artist: str = song[2]
-        b64: str = song[3]
+        title, artist, b64 = self.unpack_song(song)
 
         w_p, h_p = self.small_img
         playlist_cover = resources.coverArtToText(f'{self.main_fp}/{fp.PLAYLIST}.{self.cover_ext}', density, w_p, h_p)
@@ -814,10 +944,15 @@ class Playlist:
         lyrics = []
         with open(resources.getSongDataPath(self.lyrics_fp, b64), 'r') as f:
                 lyrics = f.read().splitlines()[:-2]
+        lyrics = Lyrics().cleanup('\n'.join(lyrics)).split('\n')
 
         playing = True
 
         instance = vlc.Instance()
+
+        if not instance:
+            print_("Could not start the vlc player.")
+            raise EnvironmentError("Could not start the vlc player.")
 
         player = instance.media_player_new()
 
@@ -932,7 +1067,7 @@ class Playlist:
 
                     if len(n_title) > max_len:
                         n_title = n_title[:max_len - 3] + '...'
-                    
+
                     if len(n_artist) > max_len:
                         n_artist = n_artist[:max_len - 3] + '...'
 
@@ -971,12 +1106,12 @@ class Playlist:
                     resources.debug('Playback stopped (user quit).')
                     player.stop()
                     return
-                
+
                 elif any([x == ch for x in resources.Keybinds.common.back]):
                     player.stop()
                     self.list_view()
                     return
-                
+
                 elif any([x == ch for x in resources.Keybinds.navigation.up]):
                     lyrics_sec_start -= 1 if lyrics_sec_start > 0 else 0
 
@@ -989,18 +1124,18 @@ class Playlist:
                         self.current_song += 1
                         self.play_view(self.playing[self.current_song])
                         return
-                    
+
                     else:
                         self.current_song = 0
                         self.playing = self.shuffleSongs(self.playing)
-                
+
                 elif any([x == ch for x in resources.Keybinds.control.backward]):
                     if self.current_song - 1 > 0:
                         player.stop()
                         self.current_song -= 1
                         self.play_view(self.playing[self.current_song])
                         return
-                    
+
                     else:
                         player.set_time(0)
 
