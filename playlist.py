@@ -1,8 +1,6 @@
+from __future__ import division
 import base64
 import os
-from typing import Any
-from matplotlib import artist
-from matplotlib.pyplot import title
 import requests
 import urllib.parse
 from song import Song
@@ -13,7 +11,7 @@ import numpy as np
 import vlc
 import time
 import resources
-from resources import cleanTitleArtist, print_
+from resources import ESCAPE_CODE, cleanTitleArtist, print_
 from base64 import b64encode, b64decode
 import glob
 import random
@@ -119,6 +117,8 @@ class Playlist:
         self.songs = []
 
         self.mode = mode.normal
+
+        self.player = None
 
         try:
             with open(self.id_fp, 'x') as f:
@@ -314,7 +314,7 @@ class Playlist:
             if not resources.existsSongData(self.lyrics_fp, b64):
                 resources.debug(f'Missing lyrics for {b64decode(b64).decode(self.title_encoding)}.')
                 with open(f'{self.lyrics_fp}/{b64}.{self.lyrics_ext}', 'x') as f:
-                    f.write(f"Ops couldn't get the lyrics for this one.")
+                    f.write(f"Ops couldn't get the lyrics for this one.\n")
 
             if not resources.existsSongData(self.cover_art_fp, b64, self.cover_ext):
                 resources.debug(f'Missing cover art image for {b64decode(b64).decode(self.title_encoding)}.')
@@ -668,20 +668,30 @@ class Playlist:
         spotify: str = 'spotify'
 
     def sync(self, type_: str, id: str, do_lyrics: bool = True):
+        disable_stdout_state = resources.DISABLE_STDOUT
+        if not resources.DEBUG:
+            resources.DISABLE_STDOUT = True
+
+        if not resources.DEBUG and not disable_stdout_state:
+            print(f'Initializing drivers...\r', end='')
+
         resources._init_selenium_driver()
+
+        if not resources.DEBUG and not disable_stdout_state:
+            print(f'{ESCAPE_CODE}[B', end='')
 
         not_parsed = []
 
         songs = []
         if type_ == self.SyncType.spotify:
             spotify = resources.Spotify()
-            songs = spotify.get_songs(id)
+            songs, id = spotify.get_songs(id)
 
         bar = None
-        disable_stdout_state = resources.DISABLE_STDOUT
         if not resources.DEBUG:
-            resources.DISABLE_STDOUT = True
-            bar = resources.progressBar(len(songs), self.width, "Syncing...")
+            text = "Syncing..."
+            bar = resources.progressBar(len(songs), self.width - len(text) - (len(str(len(songs))) * 2) - 6, text)
+            bar.start()
 
         for song in songs:
             if song and not self.existsSongInList(*song):
@@ -691,7 +701,10 @@ class Playlist:
                 not_parsed.append(' by '.join(song))
 
             if bar:
+                resources.DISABLE_STDOUT = False
                 bar.next()
+                if not resources.DEBUG:
+                    resources.DISABLE_STDOUT = True
 
         self.fix_integrity()
 
@@ -703,10 +716,20 @@ class Playlist:
 
         resources.drivers[0].quit()
 
-        with open(self.id_fp, 'a') as f:
-            f.write(f"{type_}:{id}:{'1' if do_lyrics else '0'}")
+        with open(self.id_fp, 'w+') as f:
+            new_ids = []
+            for ln in f.readlines():
+                if ln.split(':')[1] == id and ln.split(':')[0] == type_:
+                    continue
+
+                new_ids.append(ln)
+
+            new_ids.append(f"{type_}:{id}:{'1' if do_lyrics else '0'}")
+
+            f.write('\n'.join(new_ids))
 
         resources.DISABLE_STDOUT = disable_stdout_state
+        print_("\x1b[2A")
 
     def update_display(self, buffer: list, instructions: str | None = ''):
         buffer = [';'] + buffer
@@ -856,6 +879,10 @@ class Playlist:
 
                     resources.drivers[0].quit()
 
+                elif string.startswith(f'{resources.Key.common.command}sync '):
+                    to_sync = string.split('sync ')[1]
+                    self.sync(self.SyncType.spotify, to_sync)
+
                 elif string.startswith(f'{resources.Key.common.command}sync'):
                     to_sync = [];
                     with open(self.id_fp, 'r') as f:
@@ -863,7 +890,7 @@ class Playlist:
                             to_sync.append(l.split(':'))
 
                     for el in to_sync:
-                        self.sync(el[0], el[1], el[2] == '1')
+                        self.sync(el[0], el[1], '1' in el[2])
 
                 elif string.startswith(resources.Key.common.command):
                     self._update_list_view(self.songs)
@@ -954,17 +981,17 @@ class Playlist:
             print_("Could not start the vlc player.")
             raise EnvironmentError("Could not start the vlc player.")
 
-        player = instance.media_player_new()
+        self.player = instance.media_player_new()
 
         media = instance.media_new(resources.getSongDataPath(self.songs_fp, b64))
-        player.set_media(media)
+        self.player.set_media(media)
 
-        player.play()
+        self.player.play()
         resources.debug('Playback started.')
 
         time.sleep(0.5)
 
-        total_time = round(player.get_length() / 1000)
+        total_time = round(self.player.get_length() / 1000)
 
         extra_lines = 7
         dc_cl = resources.ESCAPE_CODE + f"[38;2;{dc[0]};{dc[1]};{dc[2]}m"
@@ -1001,7 +1028,7 @@ class Playlist:
         lyrics_color = resources.ESCAPE_CODE + "[38;5;255m" if sum(dc) / 3 <= 127.5 else resources.ESCAPE_CODE + "[38;5;0m"
 
         try:
-            while (player.is_playing() or not playing):
+            while (self.player.is_playing() or not playing):
                 if self.ensureResize():
                     w_p, h_p = self.small_img
                     playlist_cover = resources.coverArtToText(f'{self.main_fp}/{fp.PLAYLIST}.{self.cover_ext}', density, w_p, h_p)
@@ -1029,7 +1056,7 @@ class Playlist:
 
                 columns = []
 
-                current_time_ms = player.get_time()
+                current_time_ms = self.player.get_time()
                 current_time = round(current_time_ms / 1000)
 
                 columns.append(list(map(
@@ -1100,15 +1127,15 @@ class Playlist:
 
                 if any([x == ch for x in resources.Keybinds.control.play]):
                     playing = not playing
-                    player.pause()
+                    self.player.pause()
 
                 elif any([x == ch for x in resources.Keybinds.common.quit]):
                     resources.debug('Playback stopped (user quit).')
-                    player.stop()
+                    self.player.stop()
                     return
 
                 elif any([x == ch for x in resources.Keybinds.common.back]):
-                    player.stop()
+                    self.player.stop()
                     self.list_view()
                     return
 
@@ -1120,7 +1147,7 @@ class Playlist:
 
                 elif any([x == ch for x in resources.Keybinds.control.forward]):
                     if self.current_song + 1 < len(self.playing) - 1:
-                        player.stop()
+                        self.player.stop()
                         self.current_song += 1
                         self.play_view(self.playing[self.current_song])
                         return
@@ -1131,33 +1158,33 @@ class Playlist:
 
                 elif any([x == ch for x in resources.Keybinds.control.backward]):
                     if self.current_song - 1 > 0:
-                        player.stop()
+                        self.player.stop()
                         self.current_song -= 1
                         self.play_view(self.playing[self.current_song])
                         return
 
                     else:
-                        player.set_time(0)
+                        self.player.set_time(0)
 
                 elif any([x == ch for x in resources.Keybinds.navigation.left]):
                     if (current_time_ms - self.fwd_amount) > 0:
-                        player.set_time(current_time_ms - self.fwd_amount)
+                        self.player.set_time(current_time_ms - self.fwd_amount)
 
                     else:
-                        player.set_time(0)
+                        self.player.set_time(0)
 
                 elif any([x == ch for x in resources.Keybinds.navigation.right]):
                     if (current_time_ms + self.fwd_amount) / 1000 < total_time:
-                        player.set_time(current_time_ms + self.fwd_amount)
+                        self.player.set_time(current_time_ms + self.fwd_amount)
 
                     else:
-                        player.set_time(total_time*1000)
+                        self.player.set_time(total_time*1000)
 
                 elif any([x == ch for x in resources.Keybinds.common.delete]):
                     self._remove_song(self.playing[self.current_song])
 
                     if self.current_song + 1 < len(self.playing) - 1:
-                        player.stop()
+                        self.player.stop()
                         self.current_song += 1
                         self.play_view(self.playing[self.current_song])
                         return
@@ -1176,8 +1203,8 @@ class Playlist:
         except KeyboardInterrupt:
             resources.debug('Playback stopped (keyboard interrupt).')
 
-        player.stop()
-        player.release()
+        self.player.stop()
+        self.player.release()
         media.release()
         instance.release()
         self.handle_next()

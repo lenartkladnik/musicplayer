@@ -440,24 +440,33 @@ def cleanup():
     debug('Cleanup successful.')
 
 class progressBar:
-    def __init__(self, total: int, length: int, text: str, fill: str = '=', blank: str = '-'):
+    def __init__(self, total: int, length: int, text: str, fill: str = '█', blank: str = '░'):
         self.total = total
-        self.length = length
+        self.length = length - 2
         self.chunk = floor(self.length / self.total)
         self.fill = fill
         self.blank = blank
         self.full = 0
         self.text = text
+        self.text_color = f'{ESCAPE_CODE}[38;2;94;231;245m'
+        self.bar_color = f'{ESCAPE_CODE}[38;2;147;245;94m'
+
+    def _full(self):
+        r = round(self.full / self.total * self.length)
+        return r
+
+    def _gen_bar(self):
+        return (f'\r{ESCAPE_CODE}[A{ESCAPE_CODE}[2K{self.text_color}{self.text}{ESCAPE_CODE}[0m |{self.bar_color}{self.fill * self._full()}{self.blank * (self.length - self._full())}{ESCAPE_CODE}[0m| {self.text_color}[{self.full}/{self.total}]{ESCAPE_CODE}[0m')
 
     def start(self):
-        print_(f'{self.text} {self.fill * self.full}{self.blank * (self.total - self.full)} [{self.full}/{self.total}]')
+        print_(self._gen_bar())
 
     def next(self):
         self.full += 1
-        print_(f'{self.text} {self.fill * self.full}{self.blank * (self.total - self.full)} [{self.full}/{self.total}]')
+        print_(self._gen_bar())
 
     def keep(self):
-        print_(f'{self.text} {self.fill * self.full}{self.blank * (self.total - self.full)} [{self.full}/{self.total}]')
+        print_(self._gen_bar())
 
     def discard(self):
         print_(ESCAPE_CODE + '[2K', end='')
@@ -466,7 +475,7 @@ class FontError(Exception):...
 
 class str_(str):
     def back_replace(self, string: str, old: str, new: str) -> str:
-        head, _sep, tail = string.rpartition(old)
+        head, _, tail = string.rpartition(old)
         return head + new + tail
 
 class Figlet: # Old bad code don't bother
@@ -604,7 +613,7 @@ class Spotify:
             i+=1
             songs.append([track_name, artists])
 
-        return songs
+        return songs, playlist_id
 
 def getSongDataPath(dir_path: str, song_b64: str, ext: str = '*') -> str:
     files = glob.glob(os.path.join(dir_path, f'{song_b64}.{ext}'))

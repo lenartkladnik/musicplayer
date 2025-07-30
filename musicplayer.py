@@ -46,8 +46,12 @@ def main():
         # Shuffle mode
         playlist = Playlist(args.name)
         playlist.shuffle = True
-        playlist.songs = playlist.shuffleSongs(playlist.songs)
+        songs = playlist.shuffleSongs(playlist.loadSongs())
+        playlist.playing = songs
+
         playlist.handle_next()
+
+        playing = playlist
 
     if args.no_clear:
         resources.DISABLE_CLEAR = True
@@ -88,6 +92,8 @@ def main():
         playlist.list_view()
 
         resources.reset_screen()
+
+        playing = playlist
 
 if __name__ == '__main__':
     try:

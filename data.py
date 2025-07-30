@@ -20,14 +20,14 @@ class Lyrics:
 
         return '\n'.join(result)
 
-    def cleanup(self, lyrics: str):
-        return lyrics.replace("Ä", "č").replace("Å¡", "š").replace("Ðµ", "e").replace("â", "—")
+    def reencode(self, lyrics: str):
+        return lyrics.encode('ISO 8859-1').decode('utf-8')
 
     def get(self, search_string: str) -> str:
         r = requests.get("https://lyrics.kladnik.cc/?q=" + urllib.parse.quote(search_string)).text
 
         lyrics = "[" + r.split("[", 1)[1]
-        lyrics = self.cleanup(lyrics)
+        lyrics = self.reencode(lyrics)
         return self.truncate(lyrics.split('\n'))
 
 class CoverArt:
